@@ -24,7 +24,10 @@ def get_current_user(
         raise AppError(401, "invalid_session", "登录状态无效或已过期")
     session = db.scalar(select(Session).where(Session.token_hash == session_token_hash(raw_token)))
     now = datetime.now(timezone.utc)
-    if session is None or session.expires_at <= now:
+    expires_at = session.expires_at if session is not None else None
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if session is None or expires_at <= now:
         raise AppError(401, "invalid_session", "登录状态无效或已过期")
     if not session.user.is_active:
         raise AppError(403, "user_inactive", "用户已被停用")

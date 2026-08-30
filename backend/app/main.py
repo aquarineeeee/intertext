@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session as DbSession
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes.auth import router as auth_router
+from app.api.routes.books import router as books_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError, app_error_handler, http_error_handler, unhandled_error_handler, validation_error_handler
 from app.db.session import get_db
@@ -21,6 +22,8 @@ def create_app() -> FastAPI:
     # Keep the versioned API canonical while retaining the short /api paths for local clients.
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(auth_router, prefix="/api")
+    app.include_router(books_router, prefix="/api/v1")
+    app.include_router(books_router, prefix="/api")
 
     @app.get("/health", tags=["system"])
     def health(db: DbSession = Depends(get_db)) -> dict[str, str]:

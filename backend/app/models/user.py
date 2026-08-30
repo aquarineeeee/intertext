@@ -19,3 +19,5 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+    books = relationship("Book", back_populates="user", cascade="all, delete-orphan")
+    import_files = relationship("ImportFile", back_populates="user", cascade="all, delete-orphan")

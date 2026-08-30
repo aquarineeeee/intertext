@@ -3,6 +3,7 @@
 
 # Local development data and uploaded files
 /storage/
+backend/storage/
 /.data/
 
 # Environment and secrets

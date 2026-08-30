@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     cookie_samesite: str = "lax"
     allowed_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+    storage_backend: str = "local"
+    storage_local_dir: str = "storage"
+    max_upload_size_bytes: int = 20 * 1024 * 1024
+    s3_endpoint_url: str | None = None
+    s3_bucket: str | None = None
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_region: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
