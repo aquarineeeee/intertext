@@ -1,0 +1,31 @@
+# Local planning and non-code documents
+/local/
+
+# Local development data and uploaded files
+/storage/
+/.data/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node/build output
+node_modules/
+dist/
+build/
+
+# IDE and logs
+.idea/
+.vscode/
+*.log
+Thumbs.db
+.DS_Store
