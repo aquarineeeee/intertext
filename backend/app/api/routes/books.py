@@ -10,8 +10,10 @@ from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models.book import Book, ImportFile
+from app.models.document import Chapter
 from app.models.user import User
-from app.schemas.books import BookResponse
+from app.schemas.books import BookResponse, ChapterResponse, ChapterSummaryResponse
+from app.services.book_parser import parse_book
 from app.services.book_import import default_title, stage_upload, storage_key
 from app.storage import get_storage
 
@@ -64,6 +66,9 @@ async def import_book(
         staged.unlink(missing_ok=True)
         raise
     response.headers["Location"] = f"/api/v1/books/{book.id}"
+    # Parsing is synchronous for now; the persisted status still makes the operation recoverable.
+    parse_book(db, book.id, storage)
+    db.refresh(book)
     return book
 
 
@@ -78,6 +83,43 @@ def get_book(book_id: str, db: DbSession = Depends(get_db), user: User = Depends
     if book is None:
         raise AppError(404, "book_not_found", "书籍不存在")
     return book
+
+
+@router.post("/{book_id}/parse", response_model=BookResponse)
+def reparse_book(book_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> Book:
+    book = db.scalar(select(Book).where(Book.id == book_id, Book.user_id == user.id))
+    if book is None:
+        raise AppError(404, "book_not_found", "书籍不存在")
+    return parse_book(db, book.id, get_storage(get_settings()))
+
+
+@router.get("/{book_id}/chapters", response_model=list[ChapterSummaryResponse])
+def list_chapters(book_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> list[Chapter]:
+    book = db.scalar(select(Book).where(Book.id == book_id, Book.user_id == user.id))
+    if book is None:
+        raise AppError(404, "book_not_found", "书籍不存在")
+    return list(db.scalars(select(Chapter).where(Chapter.book_id == book.id).order_by(Chapter.chapter_index)).all())
+
+
+@router.get("/{book_id}/chapters/{chapter_id}", response_model=ChapterResponse)
+def get_chapter(book_id: str, chapter_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> Chapter:
+    book = db.scalar(select(Book).where(Book.id == book_id, Book.user_id == user.id))
+    if book is None:
+        raise AppError(404, "book_not_found", "书籍不存在")
+    query = select(Chapter).where(Chapter.book_id == book.id)
+    if chapter_id.isdigit():
+        query = query.where(Chapter.chapter_index == int(chapter_id))
+    else:
+        query = query.where(Chapter.id == chapter_id)
+    chapter = db.scalar(query)
+    if chapter is None:
+        raise AppError(404, "chapter_not_found", "章节不存在")
+    return chapter
+
+
+@router.get("/{book_id}/chapters/{chapter_id}/content", response_model=ChapterResponse)
+def get_chapter_content(book_id: str, chapter_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> Chapter:
+    return get_chapter(book_id, chapter_id, db, user)
 
 
 @router.delete("/{book_id}", status_code=204)

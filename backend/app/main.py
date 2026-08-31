@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
@@ -9,12 +11,26 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.books import router as books_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError, app_error_handler, http_error_handler, unhandled_error_handler, validation_error_handler
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
+from app.services.book_parser import recover_parsing_books
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title=settings.app_name, version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        # A worker may die after marking a book parsing; make it retryable on restart.
+        db = SessionLocal()
+        try:
+            recover_parsing_books(db)
+        except SQLAlchemyError:
+            db.rollback()
+        finally:
+            db.close()
+        yield
+
+    app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
     app.add_exception_handler(AppError, app_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_error_handler)

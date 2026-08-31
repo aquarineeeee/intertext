@@ -1,5 +1,6 @@
 # Local planning and non-code documents
 /local/
+/drafts/
 
 # Local development data and uploaded files
 /storage/
@@ -21,6 +22,7 @@ __pycache__/
 
 # Node/build output
 node_modules/
+.pnpm-store/
 dist/
 build/
 
