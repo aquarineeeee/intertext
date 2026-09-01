@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Response, UploadFile
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models.book import Book, ImportFile
-from app.models.document import Chapter
+from app.models.document import Annotation, Chapter
 from app.models.user import User
 from app.schemas.books import BookResponse, ChapterResponse, ChapterSummaryResponse
 from app.services.book_parser import parse_book
@@ -90,6 +90,8 @@ def reparse_book(book_id: str, db: DbSession = Depends(get_db), user: User = Dep
     book = db.scalar(select(Book).where(Book.id == book_id, Book.user_id == user.id))
     if book is None:
         raise AppError(404, "book_not_found", "书籍不存在")
+    if db.scalar(select(func.count(Annotation.id)).where(Annotation.book_id == book.id, Annotation.user_id == user.id)):
+        raise AppError(409, "reparse_blocked", "书籍已有批注，不能重新解析")
     return parse_book(db, book.id, get_storage(get_settings()))
 
 

@@ -21,3 +21,5 @@ class User(Base):
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     books = relationship("Book", back_populates="user", cascade="all, delete-orphan")
     import_files = relationship("ImportFile", back_populates="user", cascade="all, delete-orphan")
+    reading_progress = relationship("ReadingProgress", back_populates="user", cascade="all, delete-orphan")
+    annotations = relationship("Annotation", back_populates="user", cascade="all, delete-orphan")

@@ -26,6 +26,8 @@ class Book(Base):
     import_files = relationship("ImportFile", back_populates="book", cascade="all, delete-orphan")
     chapters = relationship("Chapter", back_populates="book", cascade="all, delete-orphan", order_by="Chapter.chapter_index")
     document_chunks = relationship("DocumentChunk", back_populates="book", cascade="all, delete-orphan")
+    reading_progress = relationship("ReadingProgress", back_populates="book", cascade="all, delete-orphan")
+    annotations = relationship("Annotation", back_populates="book", cascade="all, delete-orphan")
 
     @property
     def import_file(self) -> "ImportFile | None":

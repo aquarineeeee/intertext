@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.books import router as books_router
+from app.api.routes.reading import router as reading_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError, app_error_handler, http_error_handler, unhandled_error_handler, validation_error_handler
 from app.db.session import SessionLocal, get_db
@@ -40,6 +41,8 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api")
     app.include_router(books_router, prefix="/api/v1")
     app.include_router(books_router, prefix="/api")
+    app.include_router(reading_router, prefix="/api/v1")
+    app.include_router(reading_router, prefix="/api")
 
     @app.get("/health", tags=["system"])
     def health(db: DbSession = Depends(get_db)) -> dict[str, str]:

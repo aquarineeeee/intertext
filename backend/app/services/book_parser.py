@@ -11,12 +11,12 @@ from typing import BinaryIO
 from urllib.parse import unquote
 from xml.etree import ElementTree
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.models.book import Book
-from app.models.document import Chapter, DocumentChunk
+from app.models.document import Annotation, Chapter, DocumentChunk
 from app.storage import Storage
 
 
@@ -176,6 +176,8 @@ def parse_book(db: Session, book_id: str, storage: Storage) -> Book:
     book = db.scalar(select(Book).where(Book.id == book_id))
     if book is None:
         raise AppError(404, "book_not_found", "书籍不存在")
+    if db.scalar(select(func.count(Annotation.id)).where(Annotation.book_id == book.id)):
+        raise AppError(409, "reparse_blocked", "书籍已有批注，不能重新解析")
     imported = book.import_file
     if imported is None:
         raise AppError(422, "parse_failed", "书籍缺少原始文件")
