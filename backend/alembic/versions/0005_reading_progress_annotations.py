@@ -1,13 +1,13 @@
 """add reading progress and annotations
 
-Revision ID: 0005_reading_progress_annotations
+Revision ID: 0005_reading_annotations
 Revises: 0004_document_content
 """
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0005_reading_progress_annotations"
+revision = "0005_reading_annotations"
 down_revision = "0004_document_content"
 branch_labels = None
 depends_on = None

@@ -26,6 +26,13 @@ node_modules/
 dist/
 build/
 
+# Frontend local/build artifacts
+/frontend/.cache/
+/frontend/.vite/
+/frontend/*-debug.log*
+/frontend/logs/
+/frontend/.tmp-*
+
 # IDE and logs
 .idea/
 .vscode/

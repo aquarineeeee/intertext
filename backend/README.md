@@ -1,4 +1,4 @@
-# Intertext 后端（阶段 4）
+# Intertext 后端（阶段 5）
 
 这是 PostgreSQL 专用的 FastAPI 后端基础服务。认证使用 Argon2id 密码哈希、服务端会话表和签名的 HttpOnly Cookie；客户端不能提交或覆盖 `user_id`。
 
@@ -25,9 +25,16 @@
 - `GET/PUT /api/v1/books/{book_id}/progress`：读取或保存当前用户最近阅读的章节
 - `GET/POST /api/v1/books/{book_id}/annotations`：读取或创建章节批注
 - `PATCH/DELETE /api/v1/books/{book_id}/annotations/{annotation_id}`：编辑或删除批注
+- `GET/POST /api/v1/books/{book_id}/notes`：读取或创建整本书的 Note
+- `GET/PATCH/DELETE /api/v1/books/{book_id}/notes/{note_id}`：读取、保存或删除 Note
+- `GET/POST /api/v1/books/{book_id}/conversations`：读取或创建对话
+- `GET/PATCH/DELETE /api/v1/books/{book_id}/conversations/{conversation_id}`：读取、重命名或删除对话（删除时级联删除消息）
+- `GET/POST /api/v1/books/{book_id}/conversations/{conversation_id}/messages`：读取或持久化消息；用户消息可带 `client_message_id` 幂等提交
 
 上传文件默认保存到进程当前工作目录下的 `storage/`（该目录已被 Git 忽略）。导入成功后会同步解析为章节和段落块；解析失败时书籍状态为 `failed`，可通过解析接口重试。章节正文统一使用 LF 换行，段落块的 `start_offset`/`end_offset` 是 UTF-16 code unit 偏移。单个文件最大 20 MiB；当前用户上传过相同 SHA-256 文件时会返回 `duplicate_file`。生产环境可将 `STORAGE_BACKEND` 设为 `s3` 并配置对应的 S3 兼容端点和凭据（同时安装 `boto3`）。
 
 批注选区使用章节正文的 UTF-16 code unit 偏移，并保存选中文本用于定位校验；正文变化后会尝试唯一原文匹配，无法唯一定位时标记为 `orphaned` 并返回 `location_error`。已存在批注的书籍禁止重新解析，以避免偏移失效。
+
+Note 内容最多 100,000 个字符，消息内容最多 20,000 个字符。服务端不保存 Note 草稿，只有创建或更新请求才会写入数据库。消息的 `client_message_id` 仅允许用于用户消息；同一对话内重复提交该 ID 返回原消息（HTTP 200），不会创建重复记录。助手消息的状态支持 `pending`、`streaming`、`completed`、`failed`、`cancelled` 和 `partial`，阶段 5 只负责持久化，不调用 AI。
 
 错误统一为 `{ "error": { "code": "...", "message": "...", "details": [...] } }`。开发环境可使用 `COOKIE_SECURE=false`；生产环境必须使用 HTTPS 并设置 `COOKIE_SECURE=true`。

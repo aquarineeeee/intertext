@@ -1,0 +1,10 @@
+{
+  "description": "Organizes and tracks reading progress with book displays, annotations, notes, and a visual calendar to enhance reading habits and user engagement.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

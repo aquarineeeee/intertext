@@ -23,3 +23,6 @@ class User(Base):
     import_files = relationship("ImportFile", back_populates="user", cascade="all, delete-orphan")
     reading_progress = relationship("ReadingProgress", back_populates="user", cascade="all, delete-orphan")
     annotations = relationship("Annotation", back_populates="user", cascade="all, delete-orphan")
+    notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
+    conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+    messages = relationship("Message", back_populates="user", cascade="all, delete-orphan")
