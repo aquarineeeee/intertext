@@ -11,10 +11,13 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.books import router as books_router
 from app.api.routes.reading import router as reading_router
 from app.api.routes.collaboration import router as collaboration_router
+from app.api.routes.ai import router as ai_router, ai_router as ai_global_router
+from app.api.routes.mcp import router as mcp_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError, app_error_handler, http_error_handler, unhandled_error_handler, validation_error_handler
 from app.db.session import SessionLocal, get_db
 from app.services.book_parser import recover_parsing_books
+from app.services.ai_runs import recover_ai_runs
 
 
 def create_app() -> FastAPI:
@@ -26,6 +29,7 @@ def create_app() -> FastAPI:
         db = SessionLocal()
         try:
             recover_parsing_books(db)
+            recover_ai_runs(db)
         except SQLAlchemyError:
             db.rollback()
         finally:
@@ -46,6 +50,12 @@ def create_app() -> FastAPI:
     app.include_router(reading_router, prefix="/api")
     app.include_router(collaboration_router, prefix="/api/v1")
     app.include_router(collaboration_router, prefix="/api")
+    app.include_router(ai_router, prefix="/api/v1")
+    app.include_router(ai_router, prefix="/api")
+    app.include_router(ai_global_router, prefix="/api/v1")
+    app.include_router(ai_global_router, prefix="/api")
+    app.include_router(mcp_router, prefix="/api/v1")
+    app.include_router(mcp_router, prefix="/api")
 
     @app.get("/health", tags=["system"])
     def health(db: DbSession = Depends(get_db)) -> dict[str, str]:

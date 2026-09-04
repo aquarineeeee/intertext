@@ -1,4 +1,4 @@
-# Intertext 后端（阶段 5）
+# Intertext 后端（阶段 6）
 
 这是 PostgreSQL 专用的 FastAPI 后端基础服务。认证使用 Argon2id 密码哈希、服务端会话表和签名的 HttpOnly Cookie；客户端不能提交或覆盖 `user_id`。
 
@@ -30,11 +30,24 @@
 - `GET/POST /api/v1/books/{book_id}/conversations`：读取或创建对话
 - `GET/PATCH/DELETE /api/v1/books/{book_id}/conversations/{conversation_id}`：读取、重命名或删除对话（删除时级联删除消息）
 - `GET/POST /api/v1/books/{book_id}/conversations/{conversation_id}/messages`：读取或持久化消息；用户消息可带 `client_message_id` 幂等提交
+- `GET/POST/PATCH/DELETE /api/v1/ai/providers`：管理当前用户的 AI Provider（API Key 只返回 `has_api_key`）
+- `POST /api/v1/books/{book_id}/search`：受所有权和 PGroonga 约束的书籍检索
+- `POST /api/v1/books/{book_id}/conversations/{conversation_id}/runs`：创建可恢复 AI 运行
+- `GET /api/v1/ai/runs/{run_id}`、`POST /api/v1/ai/runs/{run_id}/cancel`：查看或取消运行
+- `GET /api/v1/ai/runs/{run_id}/events`：SSE 事件流，支持 `Last-Event-ID` 或 `after` 续传
+- `GET/POST/PATCH/DELETE /api/v1/mcp/servers`：配置当前用户的 MCP Server（Token 只返回 `has_token`）
+- `POST /api/v1/mcp/servers/{server_id}/tools`：通过服务端发现并筛选 allowlist 中的只读工具
+- `POST /api/v1/mcp/servers/{server_id}/tools/call`：调用 allowlist 中的只读工具并写入审计日志
+- `GET /api/v1/mcp/servers/{server_id}/logs`：读取当前用户的 MCP 调用日志
 
 上传文件默认保存到进程当前工作目录下的 `storage/`（该目录已被 Git 忽略）。导入成功后会同步解析为章节和段落块；解析失败时书籍状态为 `failed`，可通过解析接口重试。章节正文统一使用 LF 换行，段落块的 `start_offset`/`end_offset` 是 UTF-16 code unit 偏移。单个文件最大 20 MiB；当前用户上传过相同 SHA-256 文件时会返回 `duplicate_file`。生产环境可将 `STORAGE_BACKEND` 设为 `s3` 并配置对应的 S3 兼容端点和凭据（同时安装 `boto3`）。
 
 批注选区使用章节正文的 UTF-16 code unit 偏移，并保存选中文本用于定位校验；正文变化后会尝试唯一原文匹配，无法唯一定位时标记为 `orphaned` 并返回 `location_error`。已存在批注的书籍禁止重新解析，以避免偏移失效。
 
-Note 内容最多 100,000 个字符，消息内容最多 20,000 个字符。服务端不保存 Note 草稿，只有创建或更新请求才会写入数据库。消息的 `client_message_id` 仅允许用于用户消息；同一对话内重复提交该 ID 返回原消息（HTTP 200），不会创建重复记录。助手消息的状态支持 `pending`、`streaming`、`completed`、`failed`、`cancelled` 和 `partial`，阶段 5 只负责持久化，不调用 AI。
+Note 内容最多 100,000 个字符，消息内容最多 20,000 个字符。服务端不保存 Note 草稿，只有创建或更新请求才会写入数据库。消息的 `client_message_id` 仅允许用于用户消息；同一对话内重复提交该 ID 返回原消息（HTTP 200），不会创建重复记录。助手消息的状态支持 `pending`、`streaming`、`completed`、`failed`、`cancelled` 和 `partial`。
+
+阶段 6 需要 PostgreSQL 安装并启用 PGroonga（迁移 `0007_ai_gateway` 会显式创建扩展和索引）。AI Provider 支持 OpenAI、Anthropic 和 Ollama-compatible；API Key 使用服务端 Fernet 密文保存，任何响应和日志都不会返回明文。运行事件持久化后通过 SSE 增量发送，断线可按事件序号续传；服务重启会将未完成运行标记为 `partial` 或 `failed`。
 
 错误统一为 `{ "error": { "code": "...", "message": "...", "details": [...] } }`。开发环境可使用 `COOKIE_SECURE=false`；生产环境必须使用 HTTPS 并设置 `COOKIE_SECURE=true`。
+
+MCP 请求只由服务端发起，支持 Streamable HTTP 和 SSE。配置时仅允许 HTTPS（开发环境可使用 localhost），每次连接会重新解析域名并拒绝内网、环回、链路本地和云元数据地址，同时禁用重定向。服务器 Token 使用与 AI Provider 相同的 Fernet 加密存储，响应和日志不会返回 Token。工具调用必须同时出现在该 Server 的 allowlist 中且通过只读名称检查；MCP 永远不会获得写入本应用数据库的接口权限。调用受超时、响应大小和并发限制，`mcp_call_logs` 按用户永久保留。

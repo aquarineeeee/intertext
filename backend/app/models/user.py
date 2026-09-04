@@ -26,3 +26,7 @@ class User(Base):
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="user", cascade="all, delete-orphan")
+    ai_providers = relationship("AIProvider", back_populates="user", cascade="all, delete-orphan")
+    ai_runs = relationship("AIRun", back_populates="user", cascade="all, delete-orphan")
+    mcp_servers = relationship("MCPServer", back_populates="user", cascade="all, delete-orphan")
+    mcp_call_logs = relationship("MCPCallLog", back_populates="user", cascade="all, delete-orphan")

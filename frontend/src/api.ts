@@ -81,6 +81,45 @@ export type ApiMessage = {
   updated_at: string
 }
 
+export type ApiAIProvider = {
+  id: string
+  name: string
+  provider_type: 'openai' | 'anthropic' | 'ollama' | string
+  model: string
+  base_url: string | null
+  enabled: boolean
+  has_api_key: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ApiAIRun = {
+  id: string
+  conversation_id: string
+  user_message_id: string
+  assistant_message_id: string
+  provider_id: string | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'partial' | string
+  last_sequence: number
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ApiSearchResult = {
+  chunk_id: string
+  book_id: string
+  chapter_id: string
+  chapter_index: number
+  chapter_title: string
+  text: string
+  start_offset: number
+  end_offset: number
+  score: number | null
+}
+
 export type ApiError = {
   error?: {
     code?: string
@@ -178,6 +217,18 @@ export const api = {
     body.append('file', file)
     return request<ApiBook>('/books/import', { method: 'POST', body })
   },
+  listAIProviders: () => request<ApiAIProvider[]>('/ai/providers'),
+  createAIProvider: (provider: { name: string; provider_type: 'openai' | 'anthropic' | 'ollama'; model: string; base_url?: string; api_key?: string; enabled?: boolean }) =>
+    request<ApiAIProvider>('/ai/providers', { method: 'POST', body: JSON.stringify(provider) }),
+  updateAIProvider: (providerId: string, changes: Partial<Pick<ApiAIProvider, 'name' | 'model' | 'base_url' | 'enabled'>> & { api_key?: string }) =>
+    request<ApiAIProvider>(`/ai/providers/${providerId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
+  deleteAIProvider: (providerId: string) => request<void>(`/ai/providers/${providerId}`, { method: 'DELETE' }),
+  searchBook: (bookId: string, query: string, chapterId?: string, limit = 6) =>
+    request<ApiSearchResult[]>(`/books/${bookId}/search`, { method: 'POST', body: JSON.stringify({ book_id: bookId, query, chapter_id: chapterId, limit }) }),
+  createAIRun: (bookId: string, conversationId: string, payload: { content: string; client_message_id?: string; provider_id?: string; model?: string; chapter_id?: string; selection?: string }) =>
+    request<ApiAIRun>(`/books/${bookId}/conversations/${conversationId}/runs`, { method: 'POST', body: JSON.stringify(payload) }),
+  getAIRun: (runId: string) => request<ApiAIRun>(`/ai/runs/${runId}`),
+  cancelAIRun: (runId: string) => request<ApiAIRun>(`/ai/runs/${runId}/cancel`, { method: 'POST' }),
 }
 
 export function isUnauthorized(error: unknown): boolean {
