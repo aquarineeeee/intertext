@@ -142,7 +142,9 @@ def invoke_tool(server_id: str, payload: MCPCallRequest, db: DbSession = Depends
         raise AppError(429, "mcp_concurrency_limit", "MCP 并发调用数已达到上限")
     try:
         result = call_tool(item, get_settings(), payload.tool_name, payload.arguments)
-        serialized = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+        # Persist only a redacted copy. The live response may contain arbitrary
+        # remote data, including credentials returned by a tool.
+        serialized = json.dumps(redact_secrets(result), ensure_ascii=False, separators=(",", ":"))
         if len(serialized.encode("utf-8")) > get_settings().mcp_max_response_bytes:
             raise AppError(502, "mcp_response_too_large", "MCP 响应超过大小限制")
         log.status = "success"

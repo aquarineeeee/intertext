@@ -1,0 +1,11 @@
+intertext.example.com {
+    encode gzip
+    reverse_proxy 127.0.0.1:8000
+    header {
+        -Server
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "same-origin"
+    }
+}

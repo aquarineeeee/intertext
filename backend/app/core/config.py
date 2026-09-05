@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     storage_local_dir: str = "storage"
     max_upload_size_bytes: int = 20 * 1024 * 1024
+    max_import_size_bytes: int = 200 * 1024 * 1024
     s3_endpoint_url: str | None = None
     s3_bucket: str | None = None
     s3_access_key: str | None = None
@@ -31,6 +32,12 @@ class Settings(BaseSettings):
     mcp_max_concurrent_calls: int = 4
     mcp_max_redirects: int = 3
     mcp_allowed_tools: Annotated[list[str], NoDecode] = []
+    # Stage 8 application security controls.
+    csrf_enabled: bool = True
+    rate_limit_requests: int = 120
+    rate_limit_window_seconds: int = 60
+    security_headers_enabled: bool = True
+    log_level: str = "INFO"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

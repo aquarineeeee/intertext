@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,14 +15,23 @@ from app.api.routes.collaboration import router as collaboration_router
 from app.api.routes.ai import router as ai_router, ai_router as ai_global_router
 from app.api.routes.mcp import router as mcp_router
 from app.core.config import get_settings
+from app.core.middleware import SecurityMiddleware
 from app.core.exceptions import AppError, app_error_handler, http_error_handler, unhandled_error_handler, validation_error_handler
 from app.db.session import SessionLocal, get_db
 from app.services.book_parser import recover_parsing_books
 from app.services.ai_runs import recover_ai_runs
+from app.api.routes.data import router as data_router
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if settings.environment.lower() == "production":
+        if settings.secret_key in {"change-me-in-development", ""} or len(settings.secret_key) < 32:
+            raise RuntimeError("production SECRET_KEY must be a random value of at least 32 characters")
+        if not settings.cookie_secure:
+            raise RuntimeError("COOKIE_SECURE must be true in production")
+        if "*" in settings.allowed_origins:
+            raise RuntimeError("ALLOWED_ORIGINS cannot contain * when credentials are enabled")
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -37,6 +47,15 @@ def create_app() -> FastAPI:
         yield
 
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+    app.add_middleware(SecurityMiddleware, settings=settings)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Accept", "Content-Type", "Last-Event-ID", "X-Requested-With"],
+        expose_headers=["Content-Disposition", "Location", "Retry-After"],
+    )
     app.add_exception_handler(AppError, app_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_error_handler)
@@ -56,6 +75,8 @@ def create_app() -> FastAPI:
     app.include_router(ai_global_router, prefix="/api")
     app.include_router(mcp_router, prefix="/api/v1")
     app.include_router(mcp_router, prefix="/api")
+    app.include_router(data_router, prefix="/api/v1")
+    app.include_router(data_router, prefix="/api")
 
     @app.get("/health", tags=["system"])
     def health(db: DbSession = Depends(get_db)) -> dict[str, str]:

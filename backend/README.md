@@ -1,4 +1,4 @@
-# Intertext 后端（阶段 6）
+# Intertext 后端（阶段 8）
 
 这是 PostgreSQL 专用的 FastAPI 后端基础服务。认证使用 Argon2id 密码哈希、服务端会话表和签名的 HttpOnly Cookie；客户端不能提交或覆盖 `user_id`。
 
@@ -39,6 +39,8 @@
 - `POST /api/v1/mcp/servers/{server_id}/tools`：通过服务端发现并筛选 allowlist 中的只读工具
 - `POST /api/v1/mcp/servers/{server_id}/tools/call`：调用 allowlist 中的只读工具并写入审计日志
 - `GET /api/v1/mcp/servers/{server_id}/logs`：读取当前用户的 MCP 调用日志
+- `GET /api/v1/export`（或 `/api/v1/data/export`）：导出当前用户数据为 UTF-8 JSON 下载；原始文件以 Base64 包含在导出中，Provider/MCP 密钥永不导出
+- `POST /api/v1/import`（或 `/api/v1/data/import`）：导入 JSON 请求体或 multipart 的 `file`；按当前用户的文件 SHA-256 去重并返回导入统计
 
 上传文件默认保存到进程当前工作目录下的 `storage/`（该目录已被 Git 忽略）。导入成功后会同步解析为章节和段落块；解析失败时书籍状态为 `failed`，可通过解析接口重试。章节正文统一使用 LF 换行，段落块的 `start_offset`/`end_offset` 是 UTF-16 code unit 偏移。单个文件最大 20 MiB；当前用户上传过相同 SHA-256 文件时会返回 `duplicate_file`。生产环境可将 `STORAGE_BACKEND` 设为 `s3` 并配置对应的 S3 兼容端点和凭据（同时安装 `boto3`）。
 
@@ -51,3 +53,9 @@ Note 内容最多 100,000 个字符，消息内容最多 20,000 个字符。服�
 错误统一为 `{ "error": { "code": "...", "message": "...", "details": [...] } }`。开发环境可使用 `COOKIE_SECURE=false`；生产环境必须使用 HTTPS 并设置 `COOKIE_SECURE=true`。
 
 MCP 请求只由服务端发起，支持 Streamable HTTP 和 SSE。配置时仅允许 HTTPS（开发环境可使用 localhost），每次连接会重新解析域名并拒绝内网、环回、链路本地和云元数据地址，同时禁用重定向。服务器 Token 使用与 AI Provider 相同的 Fernet 加密存储，响应和日志不会返回 Token。工具调用必须同时出现在该 Server 的 allowlist 中且通过只读名称检查；MCP 永远不会获得写入本应用数据库的接口权限。调用受超时、响应大小和并发限制，`mcp_call_logs` 按用户永久保留。
+
+## 阶段 8 运维
+
+应用默认启用 CORS、Cookie 请求的 Origin/Referer CSRF 校验、按客户端地址的滑动窗口速率限制，以及 CSP、`X-Content-Type-Options`、`X-Frame-Options`、Referrer-Policy 和 HTTPS HSTS 响应头。通过 `CSRF_ENABLED`、`RATE_LIMIT_REQUESTS`、`RATE_LIMIT_WINDOW_SECONDS` 和 `SECURITY_HEADERS_ENABLED` 调整。速率限制存于进程内，当前 Docker 模板按单个 API worker 部署；若扩展为多 worker/多副本，应在网关或 Redis 层再加共享限流。生产环境必须使用 HTTPS、`COOKIE_SECURE=true`、强随机 `SECRET_KEY`/`ENCRYPTION_KEY`，并将 `ALLOWED_ORIGINS` 设置为实际前端来源。
+
+仓库根目录的 `docker-compose.yml` 使用带 PGroonga 的 PostgreSQL 镜像；部署前复制并填写 `backend/.env`，再执行 `docker compose up -d --build`。Caddy 和 systemd 示例位于 `deploy/`。备份命令为 `powershell -File backend/scripts/backup.ps1` 或 `sh backend/scripts/backup.sh`，恢复命令为 `powershell -File backend/scripts/restore.ps1 -BackupDir <目录>` 或 `sh backend/scripts/restore.sh <目录>`；恢复后必须执行 `alembic upgrade head`、健康检查和完整测试，再切换流量。当前代码未连接任何远程服务器，真实发布需要目标主机、部署方式、域名/证书和数据库连接信息。
