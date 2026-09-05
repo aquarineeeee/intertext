@@ -3,24 +3,6 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&display=swap');
 @import 'tailwindcss';
 
-:root {
-  --c-bg: #F6F3EF;
-  --c-fg: #514A45;
-  --c-card: #FFFFFF;
-  --c-sidebar: #87958D;
-  --c-sidebar-fg: #746D68;
-  --c-sidebar-active: #E1E7E0;
-  --c-muted: #8D8580;
-  --c-border: rgba(81, 74, 69, 0.12);
-  --c-border-mid: rgba(81, 74, 69, 0.20);
-  --c-accent: #7D8A82;
-  --c-heat-0: #EEEAE6;
-  --c-heat-1: #DEE7E0;
-  --c-heat-2: #CBD9CF;
-  --c-heat-3: #D5DFE6;
-  --c-heat-4: #DDD5E5;
-}
-
 html,
 body,
 #root {
@@ -30,8 +12,6 @@ body,
 
 body {
   font-family: 'Source Sans 3', system-ui, sans-serif;
-  background-color: var(--c-bg);
-  color: var(--c-fg);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -49,11 +29,11 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--c-border-mid);
+  background: rgba(81, 74, 69, 0.20);
   border-radius: 2px;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--c-border-mid) transparent;
+  scrollbar-color: rgba(81, 74, 69, 0.20) transparent;
 }

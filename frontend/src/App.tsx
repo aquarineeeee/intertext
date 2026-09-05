@@ -1,21 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, isUnauthorized, type ApiUser } from './api'
+import { palette as C } from './theme'
+import SettingsPage from './SettingsPage'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const C = {
-  bg: '#F6F3EF',
-  fg: '#514A45',
-  card: '#FFFFFF',
-  cardDeep: '#F0ECE8',
-  annotationsBg: '#EFE8E0',
-  notesBg: '#FFFDFC',
-  muted: '#8D8580',
-  border: 'rgba(81,74,69,0.12)',
-  borderMid: 'rgba(81,74,69,0.20)',
-  accent: '#7D8A82',
-  heat: ['#EEEAE6', '#DEE7E0', '#CBD9CF', '#D5DFE6', '#DDD5E5'],
-} as const
-
 const SECTION_HEADER_HEIGHT = 114
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
@@ -74,14 +62,14 @@ interface HeatDay {
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 const BOOKS: Book[] = [
-  { id: 1, title: 'The Name of the Rose', author: 'Umberto Eco', genre: 'Historical Fiction', color: '#EEE9E4', status: 'reading', progress: 68 },
-  { id: 2, title: 'Invisible Cities', author: 'Italo Calvino', genre: 'Literary Fiction', color: '#DFE7E0', status: 'read', progress: 100 },
-  { id: 3, title: 'The Plague', author: 'Albert Camus', genre: 'Philosophy', color: '#E8DFE0', status: 'reading', progress: 34 },
-  { id: 4, title: 'The Master and Margarita', author: 'Mikhail Bulgakov', genre: 'Satire', color: '#E1E6EB', status: 'read', progress: 100 },
-  { id: 5, title: 'Stoner', author: 'John Williams', genre: 'Literary Fiction', color: '#E5DEEA', status: 'to-read', progress: 0 },
-  { id: 6, title: 'Ways of Seeing', author: 'John Berger', genre: 'Art Criticism', color: '#E1E7E0', status: 'read', progress: 100 },
-  { id: 7, title: 'Ficciones', author: 'Jorge Luis Borges', genre: 'Short Stories', color: '#E8E0E2', status: 'read', progress: 100 },
-  { id: 8, title: 'The Stranger', author: 'Albert Camus', genre: 'Philosophy', color: '#E2E7EB', status: 'to-read', progress: 0 },
+  { id: 1, title: 'The Name of the Rose', author: 'Umberto Eco', genre: 'Historical Fiction', color: C.bookCovers[0], status: 'reading', progress: 68 },
+  { id: 2, title: 'Invisible Cities', author: 'Italo Calvino', genre: 'Literary Fiction', color: C.bookCovers[1], status: 'read', progress: 100 },
+  { id: 3, title: 'The Plague', author: 'Albert Camus', genre: 'Philosophy', color: C.bookCovers[2], status: 'reading', progress: 34 },
+  { id: 4, title: 'The Master and Margarita', author: 'Mikhail Bulgakov', genre: 'Satire', color: C.bookCovers[3], status: 'read', progress: 100 },
+  { id: 5, title: 'Stoner', author: 'John Williams', genre: 'Literary Fiction', color: C.bookCovers[4], status: 'to-read', progress: 0 },
+  { id: 6, title: 'Ways of Seeing', author: 'John Berger', genre: 'Art Criticism', color: C.bookCovers[5], status: 'read', progress: 100 },
+  { id: 7, title: 'Ficciones', author: 'Jorge Luis Borges', genre: 'Short Stories', color: C.bookCovers[6], status: 'read', progress: 100 },
+  { id: 8, title: 'The Stranger', author: 'Albert Camus', genre: 'Philosophy', color: C.bookCovers[5], status: 'to-read', progress: 0 },
 ]
 
 const ENTRIES: Entry[] = [
@@ -515,7 +503,7 @@ const MINI_GAP = 2
 const MINI_STEP = MINI + MINI_GAP
 const MINI_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-function MoreOverlay({ onClose, user }: { onClose: () => void; user: ApiUser | null }) {
+function MoreOverlay({ onClose, user, onNavigate }: { onClose: () => void; user: ApiUser | null; onNavigate: (path: string) => void }) {
   const allDays = useMemo(() => generateHeatmap(), [])
 
   // Last 26 weeks for compact display
@@ -584,10 +572,10 @@ function MoreOverlay({ onClose, user }: { onClose: () => void; user: ApiUser | n
         }}>
           <div style={{
             width: 36, height: 36, borderRadius: '50%',
-             background: '#87958D', flexShrink: 0,
+             background: C.sidebar, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: "'Source Sans 3', sans-serif",
-             fontSize: 14, fontWeight: 600, color: '#F6F3EF',
+             fontSize: 14, fontWeight: 600, color: C.bg,
           }}>
             {(user?.display_name || user?.email || '?').slice(0, 1).toUpperCase()}
           </div>
@@ -657,12 +645,14 @@ function MoreOverlay({ onClose, user }: { onClose: () => void; user: ApiUser | n
         {/* Settings items */}
         <div style={{ padding: '6px 0' }}>
           {settingsItems.map(item => (
-            <div
+            <button
               key={item.label}
+              onClick={() => item.label === 'Appearance' && onNavigate('/settings')}
               style={{
                 padding: '9px 20px', cursor: 'pointer',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 transition: 'background 0.1s',
+                width: '100%', border: 'none', textAlign: 'left', background: 'transparent',
               }}
                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(81,74,69,0.04)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -678,7 +668,7 @@ function MoreOverlay({ onClose, user }: { onClose: () => void; user: ApiUser | n
               <div style={{ color: C.muted, opacity: 0.6 }}>
                 <SvgChevronRight />
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -715,7 +705,7 @@ function MoreButton({ onClick, open }: { onClick: () => void; open: boolean }) {
 }
 
 // ─── App root ─────────────────────────────────────────────────────────────────
-export default function App() {
+function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const [user, setUser] = useState<ApiUser | null>(null)
   const [books, setBooks] = useState<Book[]>([])
@@ -744,7 +734,7 @@ export default function App() {
             title: book.title,
             author: book.import_file.file_format.toUpperCase(),
             genre: book.import_file.file_format.toUpperCase(),
-            color: ['#EEE9E4', '#DFE7E0', '#E8DFE0', '#E1E6EB', '#E5DEEA'][index % 5],
+            color: C.bookCovers[index % 5],
             status: current === 0 ? 'to-read' : total > 0 && current >= total ? 'read' : 'reading',
             progress: total > 0 ? Math.round((current / total) * 100) : 0,
           }
@@ -798,7 +788,25 @@ export default function App() {
 
       {/* Floating "更多" entry */}
       <MoreButton onClick={() => setMoreOpen(v => !v)} open={moreOpen} />
-      {moreOpen && <MoreOverlay onClose={() => setMoreOpen(false)} user={user} />}
+      {moreOpen && <MoreOverlay onClose={() => setMoreOpen(false)} user={user} onNavigate={onNavigate} />}
     </div>
   )
+}
+
+export default function App() {
+  const [path, setPath] = useState(() => window.location.pathname)
+
+  useEffect(() => {
+    const handlePopState = () => setPath(window.location.pathname)
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const navigate = (nextPath: string) => {
+    window.history.pushState({}, '', nextPath)
+    setPath(nextPath)
+  }
+
+  if (path === '/settings') return <SettingsPage onNavigate={navigate} />
+  return <LibraryApp onNavigate={navigate} />
 }

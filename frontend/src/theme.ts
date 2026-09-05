@@ -1,0 +1,27 @@
+export const palette = {
+  bg: '#F6F3EF',
+  fg: '#514A45',
+  card: '#FFFFFF',
+  cardDeep: '#F0ECE8',
+  annotationsBg: '#EFE8E0',
+  notesBg: '#FFFDFC',
+  muted: '#8D8580',
+  border: 'rgba(81,74,69,0.12)',
+  borderMid: 'rgba(81,74,69,0.20)',
+  accent: '#7D8A82',
+  sidebar: '#87958D',
+  sidebarFg: '#746D68',
+  sidebarActive: '#E1E7E0',
+  heat: ['#EEEAE6', '#DEE7E0', '#CBD9CF', '#D5DFE6', '#DDD5E5'],
+  settingsBg: '#EAE6DE',
+  settingsFg: '#2B2721',
+  settingsMuted: '#9B9589',
+  settingsBorder: '#D5D1CA',
+  settingsHeat: ['#D8D4CC', '#B8D4C2', '#7CB899', '#3E9068', '#1E6B45'],
+  bookCovers: ['#EEE9E4', '#DFE7E0', '#E8DFE0', '#E1E6EB', '#E5DEEA', '#E2E7EB', '#E8E0E2'],
+  success: '#3E9068',
+  danger: '#B84444',
+  white: '#FFFFFF',
+} as const
+
+export type Palette = typeof palette
