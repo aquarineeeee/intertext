@@ -710,7 +710,7 @@ function LoginPlaceholder() {
     <main className="login-placeholder">
       <p className="cover-kicker">INTERTEXT</p>
       <h1>登录界面即将到来</h1>
-      <p>请先完成登录，进入你的私人文本档案。</p>
+      <p>请先完成登录，继续使用你的阅读空间。</p>
     </main>
   )
 }
@@ -768,7 +768,7 @@ function LandingCover({ onNavigate }: { onNavigate: (path: string) => void }) {
 
         <div className="cover-center">
           <h1 className="cover-title cover-animate cover-animate-title">Intertext</h1>
-          <div className="cover-chapter">
+          <div className="cover-chapter cover-animate cover-animate-chapter">
             <span />
             <span>CHAPTER 14 — INTENTION</span>
             <span />
@@ -783,13 +783,6 @@ function LandingCover({ onNavigate }: { onNavigate: (path: string) => void }) {
             <span>Translated by Donna Farhi</span>
           </div>
         </div>
-
-        <nav className="cover-nav" aria-label="Site sections">
-          <button type="button" onClick={() => void enter()}>开启共读序言</button>
-          <button type="button" onClick={() => void enter()}>私人文本档案</button>
-          <button type="button" onClick={() => void enter()}>语义神经网络</button>
-          <button type="button" onClick={() => void enter()}>关于人文精神</button>
-        </nav>
 
         <div className="cover-year">LXVII / 2024</div>
         <div className={`cover-scroll-hint ${checkingSession ? 'is-checking' : ''}`}>

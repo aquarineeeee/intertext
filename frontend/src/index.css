@@ -49,6 +49,11 @@ body {
 }
 
 .cover-page {
+  --cover-animation-duration: 1.65s;
+  --cover-animation-offset: 52px;
+  --cover-blur-duration: 0.9s;
+  --cover-blur-start: 13px;
+  --cover-blur-mid: 3px;
   position: relative;
   min-height: 100vh;
   height: 100vh;
@@ -76,7 +81,6 @@ body {
 
 .cover-topline,
 .cover-chapter,
-.cover-nav,
 .cover-year,
 .cover-side-label,
 .cover-scroll-hint {
@@ -113,15 +117,21 @@ body {
 }
 
 .cover-animate {
-  animation: cover-rise 1.65s cubic-bezier(0.18, 0.78, 0.22, 1) both;
+  animation:
+    cover-rise var(--cover-animation-duration) cubic-bezier(0.18, 0.78, 0.22, 1) both,
+    cover-deblur var(--cover-blur-duration) ease-out both;
 }
 
 .cover-animate-title {
   animation-delay: 0.15s;
 }
 
+.cover-animate-chapter {
+  animation-delay: 0.25s;
+}
+
 .cover-animate-quote {
-  animation-delay: 0.42s;
+  animation-delay: 0.35s;
 }
 
 .cover-animate-attribution {
@@ -131,16 +141,22 @@ body {
 @keyframes cover-rise {
   from {
     opacity: 0;
-    transform: translateY(52px);
-    filter: blur(13px);
-  }
-  62% {
-    opacity: 0.88;
-    filter: blur(3px);
+    transform: translateY(var(--cover-animation-offset));
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes cover-deblur {
+  from {
+    filter: blur(var(--cover-blur-start));
+  }
+  45% {
+    filter: blur(var(--cover-blur-mid));
+  }
+  to {
     filter: blur(0);
   }
 }
@@ -211,31 +227,6 @@ body {
   font-size: 9px;
   writing-mode: vertical-rl;
   text-orientation: mixed;
-}
-
-.cover-nav {
-  display: flex;
-  justify-content: center;
-  gap: clamp(22px, 4vw, 66px);
-  margin-bottom: 22px;
-  color: #8D8580;
-  font-size: clamp(9px, 0.8vw, 12px);
-}
-
-.cover-nav button {
-  padding: 5px 0;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  background: transparent;
-  cursor: pointer;
-  transition: color 160ms ease;
-}
-
-.cover-nav button:hover,
-.cover-nav button:focus-visible {
-  color: #514A45;
-  outline: none;
 }
 
 .cover-year {
@@ -345,15 +336,6 @@ body {
 
   .cover-attribution {
     letter-spacing: 0.14em;
-  }
-
-  .cover-nav {
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 7px 18px;
-    margin-bottom: 16px;
-    font-size: 8px;
-    letter-spacing: 0.12em;
   }
 
   .cover-side-label {
