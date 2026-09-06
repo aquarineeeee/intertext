@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, isUnauthorized, type ApiUser } from './api'
 import { palette as C } from './theme'
 import SettingsPage from './SettingsPage'
@@ -704,6 +704,109 @@ function MoreButton({ onClick, open }: { onClick: () => void; open: boolean }) {
   )
 }
 
+// ─── Landing cover ───────────────────────────────────────────────────────────
+function LoginPlaceholder() {
+  return (
+    <main className="login-placeholder">
+      <p className="cover-kicker">INTERTEXT</p>
+      <h1>登录界面即将到来</h1>
+      <p>请先完成登录，进入你的私人文本档案。</p>
+    </main>
+  )
+}
+
+function LandingCover({ onNavigate }: { onNavigate: (path: string) => void }) {
+  const scrollRoot = useRef<HTMLDivElement>(null)
+  const librarySection = useRef<HTMLElement>(null)
+  const [showLibrary, setShowLibrary] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(false)
+
+  const enter = async () => {
+    if (checkingSession || showLibrary) return
+    setCheckingSession(true)
+    try {
+      await api.me()
+      setShowLibrary(true)
+    } catch (error) {
+      if (isUnauthorized(error)) onNavigate('/login')
+      else onNavigate('/login')
+    } finally {
+      setCheckingSession(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!showLibrary) return
+    requestAnimationFrame(() => librarySection.current?.scrollIntoView({ behavior: 'smooth' }))
+  }, [showLibrary])
+
+  useEffect(() => {
+    const root = scrollRoot.current
+    if (!root) return
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY > 0 && root.scrollTop < window.innerHeight * 0.45) {
+        event.preventDefault()
+        void enter()
+      }
+    }
+    root.addEventListener('wheel', handleWheel, { passive: false })
+    return () => root.removeEventListener('wheel', handleWheel)
+  })
+
+  return (
+    <div className="landing-scroll" ref={scrollRoot}>
+      <section className="cover-page" aria-label="Intertext introduction">
+        <div className="cover-topline">VOLUME I: THE DIALOGUE</div>
+
+        <div className="cover-side-label">
+          <span>DIGITAL HUMANISM</span>
+          <span>·</span>
+          <span>FIRST FOLIO</span>
+          <span>·</span>
+          <span>REF. 014</span>
+        </div>
+
+        <div className="cover-center">
+          <h1 className="cover-title cover-animate cover-animate-title">Intertext</h1>
+          <div className="cover-chapter">
+            <span />
+            <span>CHAPTER 14 — INTENTION</span>
+            <span />
+          </div>
+          <blockquote className="cover-quote cover-animate cover-animate-quote">
+            <span>“Everything on the earth</span>
+            <span>in between, and above</span>
+            <span>Is arising from one effulgent source.”</span>
+          </blockquote>
+          <div className="cover-attribution cover-animate cover-animate-attribution">
+            <strong>GAYATRI MANTRA</strong>
+            <span>Translated by Donna Farhi</span>
+          </div>
+        </div>
+
+        <nav className="cover-nav" aria-label="Site sections">
+          <button type="button" onClick={() => void enter()}>开启共读序言</button>
+          <button type="button" onClick={() => void enter()}>私人文本档案</button>
+          <button type="button" onClick={() => void enter()}>语义神经网络</button>
+          <button type="button" onClick={() => void enter()}>关于人文精神</button>
+        </nav>
+
+        <div className="cover-year">LXVII / 2024</div>
+        <div className={`cover-scroll-hint ${checkingSession ? 'is-checking' : ''}`}>
+          <span>{checkingSession ? 'CHECKING SESSION' : 'SCROLL TO ENTER'}</span>
+          <i aria-hidden="true" />
+        </div>
+      </section>
+
+      {showLibrary && (
+        <section className="library-page" ref={librarySection} aria-label="Library">
+          <LibraryApp onNavigate={onNavigate} />
+        </section>
+      )}
+    </div>
+  )
+}
+
 // ─── App root ─────────────────────────────────────────────────────────────────
 function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [moreOpen, setMoreOpen] = useState(false)
@@ -808,5 +911,6 @@ export default function App() {
   }
 
   if (path === '/settings') return <SettingsPage onNavigate={navigate} />
-  return <LibraryApp onNavigate={navigate} />
+  if (path === '/login') return <LoginPlaceholder />
+  return <LandingCover onNavigate={navigate} />
 }
