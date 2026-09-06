@@ -1,6 +1,7 @@
 # Local planning and non-code documents
 /local/
 /drafts/
+/test
 
 # Local development data and uploaded files
 /storage/

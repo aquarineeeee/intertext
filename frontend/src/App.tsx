@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { api, isUnauthorized, type ApiUser } from './api'
 import { palette as C } from './theme'
 import SettingsPage from './SettingsPage'
@@ -230,12 +230,31 @@ function BookListRow({ book }: { book: Book }) {
   )
 }
 
-function BooksPanel({ books, loading }: { books: Book[]; loading: boolean }) {
+function BooksPanel({ books, loading, onBookImported }: { books: Book[]; loading: boolean; onBookImported: (file: File) => Promise<void> }) {
   const [view, setView] = useState<'shelf' | 'list'>('shelf')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const views: { id: 'shelf' | 'list'; label: string }[] = [
     { id: 'shelf', label: 'Shelf' },
     { id: 'list', label: 'List' },
   ]
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setUploadError(null)
+    setUploading(true)
+    try {
+      await onBookImported(file)
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : '书籍上传失败')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -285,24 +304,45 @@ function BooksPanel({ books, loading }: { books: Book[]; loading: boolean }) {
            {books.map(book => (
              <BookCard key={book.id} book={book} />
            ))}
-           <div
+           <button
+             type="button"
+             disabled={uploading}
+             aria-label="Add book"
+             onClick={() => fileInputRef.current?.click()}
              style={{
+               width: '100%',
+               padding: 0,
+               color: 'inherit',
+               font: 'inherit',
+               background: 'transparent',
                borderRadius: 3,
                border: `1.5px dashed ${C.borderMid}`,
                aspectRatio: '2 / 3',
                display: 'flex', alignItems: 'center', justifyContent: 'center',
                flexDirection: 'column', gap: 6,
-               cursor: 'pointer', opacity: 0.5,
+               cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? 0.75 : 0.5,
                transition: 'opacity 0.15s',
              }}
-             onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
-             onMouseLeave={e => (e.currentTarget.style.opacity = '0.5')}
+             onMouseEnter={e => { if (!uploading) e.currentTarget.style.opacity = '0.9' }}
+             onMouseLeave={e => { e.currentTarget.style.opacity = uploading ? '0.75' : '0.5' }}
            >
-             <div style={{ fontSize: 20, color: C.muted, lineHeight: 1 }}>+</div>
+             <div style={{ fontSize: 20, color: C.muted, lineHeight: 1 }}>{uploading ? '…' : '+'}</div>
              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: C.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-               Add book
+               {uploading ? 'Uploading' : 'Add book'}
              </div>
-           </div>
+           </button>
+           <input
+             ref={fileInputRef}
+             type="file"
+             accept=".epub,.txt,application/epub+zip,text/plain"
+             onChange={handleFileChange}
+             style={{ display: 'none' }}
+           />
+           {uploadError && (
+             <div style={{ gridColumn: '1 / -1', color: C.fg, fontSize: 12, lineHeight: 1.4 }} role="alert">
+               {uploadError}
+             </div>
+           )}
          </div>
        ) : (
          <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
@@ -678,23 +718,23 @@ function MoreOverlay({ onClose, user, onNavigate }: { onClose: () => void; user:
 }
 
 // ─── "更多" floating button ───────────────────────────────────────────────────
-function MoreButton({ onClick, open }: { onClick: () => void; open: boolean }) {
+function MoreButton({ onClick }: { onClick: () => void }) {
   const [hovered, setHovered] = useState(false)
   return (
     <button
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      title="更多"
+      title="Settings"
       style={{
         position: 'fixed', bottom: 20, right: 20,
         width: 34, height: 34, borderRadius: '50%',
-        border: `1px solid ${open || hovered ? C.borderMid : C.border}`,
-        background: open ? C.fg : hovered ? C.card : C.bg,
-        color: open ? C.bg : C.muted,
+        border: `1px solid ${hovered ? C.borderMid : C.border}`,
+        background: hovered ? C.card : C.bg,
+        color: C.muted,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer',
-         boxShadow: hovered || open ? '0 3px 14px rgba(81,74,69,0.15)' : '0 1px 4px rgba(81,74,69,0.08)',
+         boxShadow: hovered ? '0 3px 14px rgba(81,74,69,0.15)' : '0 1px 4px rgba(81,74,69,0.08)',
         transition: 'all 0.18s ease',
         zIndex: 60,
         flexShrink: 0,
@@ -773,12 +813,25 @@ function LandingCover({ onNavigate }: { onNavigate: (path: string) => void }) {
 
 // ─── App root ─────────────────────────────────────────────────────────────────
 function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
-  const [moreOpen, setMoreOpen] = useState(false)
   const [user, setUser] = useState<ApiUser | null>(null)
   const [books, setBooks] = useState<Book[]>([])
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const handleBookImported = async (file: File) => {
+    const imported = await api.importBook(file)
+    const format = imported.import_file.file_format.toUpperCase()
+    setBooks(current => [{
+      id: imported.id,
+      title: imported.title,
+      author: format,
+      genre: format,
+      color: C.bookCovers[current.length % C.bookCovers.length],
+      status: 'to-read',
+      progress: 0,
+    }, ...current.filter(book => book.id !== imported.id)])
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -844,7 +897,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     }}>
       {/* Left: Library (full height) */}
       <div style={{ overflow: 'hidden' }}>
-        <BooksPanel books={books} loading={loading} />
+        <BooksPanel books={books} loading={loading} onBookImported={handleBookImported} />
       </div>
 
       {/* Right: Annotations (top) + Notes (bottom) */}
@@ -853,9 +906,8 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         <NotesPanel notes={notes} />
       </div>
 
-      {/* Floating "更多" entry */}
-      <MoreButton onClick={() => setMoreOpen(v => !v)} open={moreOpen} />
-      {moreOpen && <MoreOverlay onClose={() => setMoreOpen(false)} user={user} onNavigate={onNavigate} />}
+      {/* Floating settings entry */}
+      <MoreButton onClick={() => onNavigate('/settings')} />
     </div>
   )
 }
