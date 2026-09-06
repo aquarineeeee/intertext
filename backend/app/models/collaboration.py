@@ -34,6 +34,7 @@ class Conversation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     book_id: Mapped[str] = mapped_column(String(36), ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    annotation_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("annotations.id", ondelete="CASCADE"), nullable=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False, server_default="新对话")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -41,6 +42,7 @@ class Conversation(Base):
     user = relationship("User", back_populates="conversations")
     book = relationship("Book", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
+    annotation = relationship("Annotation", back_populates="conversations")
 
 
 class Message(Base):

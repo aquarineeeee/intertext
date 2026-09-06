@@ -20,7 +20,7 @@ from app.db.session import get_db
 from app.models.ai import AIProvider
 from app.models.book import Book, ImportFile
 from app.models.collaboration import Conversation, Message, Note
-from app.models.document import Annotation, Chapter, DocumentChunk, ReadingProgress
+from app.models.document import Annotation, Chapter, DocumentChunk, Excerpt, ReadingProgress
 from app.models.mcp import MCPServer
 from app.models.user import User
 from app.services.mcp_security import validate_endpoint
@@ -63,18 +63,20 @@ def _export_user(db: DbSession, user: User) -> dict:
             })
         progress = db.scalar(select(ReadingProgress).where(ReadingProgress.book_id == book.id, ReadingProgress.user_id == user.id))
         annotations = list(db.scalars(select(Annotation).where(Annotation.book_id == book.id, Annotation.user_id == user.id)).all())
+        excerpts = list(db.scalars(select(Excerpt).where(Excerpt.book_id == book.id, Excerpt.user_id == user.id)).all())
         notes = list(db.scalars(select(Note).where(Note.book_id == book.id, Note.user_id == user.id)).all())
         conversations = list(db.scalars(select(Conversation).where(Conversation.book_id == book.id, Conversation.user_id == user.id)).all())
         conversation_rows = []
         for conversation in conversations:
             messages = list(db.scalars(select(Message).where(Message.conversation_id == conversation.id, Message.user_id == user.id).order_by(Message.created_at, Message.id)).all())
-            conversation_rows.append({**_row(conversation, ("id", "title", "created_at", "updated_at")), "messages": [_row(message, ("id", "role", "content", "client_message_id", "model", "status", "created_at", "updated_at")) for message in messages]})
+            conversation_rows.append({**_row(conversation, ("id", "annotation_id", "title", "created_at", "updated_at")), "messages": [_row(message, ("id", "role", "content", "client_message_id", "model", "status", "created_at", "updated_at")) for message in messages]})
         book_rows.append({
             **_row(book, ("id", "title", "status", "parse_error", "created_at", "updated_at")),
             "import_files": imports,
             "chapters": chapter_rows,
             "progress": _row(progress, ("id", "chapter_id", "updated_at")) if progress else None,
             "annotations": [_row(annotation, ("id", "chapter_id", "start_offset", "end_offset", "selected_text", "note_content", "color", "status", "location_error", "created_at", "updated_at")) for annotation in annotations],
+            "excerpts": [_row(excerpt, ("id", "chapter_id", "start_offset", "end_offset", "selected_text", "created_at", "updated_at")) for excerpt in excerpts],
             "notes": [_row(note, ("id", "title", "content", "created_at", "updated_at")) for note in notes],
             "conversations": conversation_rows,
         })
@@ -82,7 +84,7 @@ def _export_user(db: DbSession, user: User) -> dict:
     # MCP configuration is portable except for its encrypted token. Call logs are
     # deliberately omitted because they can contain arbitrary remote response data.
     mcp_servers = [_row(server, ("id", "name", "endpoint", "transport", "tool_allowlist", "capabilities", "enabled", "created_at", "updated_at")) for server in db.scalars(select(MCPServer).where(MCPServer.user_id == user.id)).all()]
-    return {"format": "intertext-export", "schema_version": 1, "exported_at": datetime.utcnow().isoformat() + "Z", "user": {"email": user.email, "display_name": user.display_name}, "books": book_rows, "ai_providers": providers, "mcp_servers": mcp_servers}
+    return {"format": "intertext-export", "schema_version": 2, "exported_at": datetime.utcnow().isoformat() + "Z", "user": {"email": user.email, "display_name": user.display_name}, "books": book_rows, "ai_providers": providers, "mcp_servers": mcp_servers}
 
 
 def _new_id(value: object, db: DbSession, model) -> str:
@@ -95,7 +97,7 @@ def _new_id(value: object, db: DbSession, model) -> str:
 def _parse_payload(payload: object) -> dict:
     if not isinstance(payload, dict) or payload.get("format") != "intertext-export":
         raise AppError(422, "invalid_export", "导入文件不是有效的 Intertext 导出文件")
-    if payload.get("schema_version") != 1:
+    if payload.get("schema_version") not in (1, 2):
         raise AppError(422, "unsupported_export_version", "导出文件版本不受支持")
     for field in ("books", "ai_providers", "mcp_servers"):
         if field in payload and not isinstance(payload[field], list):
@@ -127,6 +129,7 @@ def _import_data(db: DbSession, user: User, payload: dict) -> dict:
     storage = get_storage(get_settings())
     book_map: dict[str, str] = {}
     chapter_map: dict[str, str] = {}
+    annotation_map: dict[str, str] = {}
     conversation_map: dict[str, str] = {}
     imported_books = 0
     duplicate_books = 0
@@ -201,11 +204,24 @@ def _import_data(db: DbSession, user: User, payload: dict) -> dict:
                     if progress is None:
                         db.add(ReadingProgress(id=_new_id(raw_progress.get("id"), db, ReadingProgress), user_id=user.id, book_id=target_book_id, chapter_id=chapter_map.get(str(raw_progress.get("chapter_id")))))
             for raw_annotation in raw_book.get("annotations", []):
-                if not isinstance(raw_annotation, dict) or db.get(Annotation, str(raw_annotation.get("id"))) is not None:
+                if not isinstance(raw_annotation, dict):
+                    continue
+                source_annotation_id = str(raw_annotation.get("id"))
+                existing_annotation = db.get(Annotation, source_annotation_id)
+                if existing_annotation is not None:
+                    annotation_map[source_annotation_id] = existing_annotation.id
                     continue
                 target_chapter = chapter_map.get(str(raw_annotation.get("chapter_id")))
                 if target_chapter:
-                    db.add(Annotation(id=_new_id(raw_annotation.get("id"), db, Annotation), user_id=user.id, book_id=target_book_id, chapter_id=target_chapter, start_offset=int(raw_annotation.get("start_offset") or 0), end_offset=int(raw_annotation.get("end_offset") or 1), selected_text=str(raw_annotation.get("selected_text") or ""), note_content=raw_annotation.get("note_content"), color=str(raw_annotation.get("color") or "yellow"), status=str(raw_annotation.get("status") or "active"), location_error=raw_annotation.get("location_error")))
+                    annotation_id = _new_id(raw_annotation.get("id"), db, Annotation)
+                    db.add(Annotation(id=annotation_id, user_id=user.id, book_id=target_book_id, chapter_id=target_chapter, start_offset=int(raw_annotation.get("start_offset") or 0), end_offset=int(raw_annotation.get("end_offset") or 1), selected_text=str(raw_annotation.get("selected_text") or ""), note_content=raw_annotation.get("note_content"), color=str(raw_annotation.get("color") or "yellow"), status=str(raw_annotation.get("status") or "active"), location_error=raw_annotation.get("location_error")))
+                    annotation_map[source_annotation_id] = annotation_id
+            for raw_excerpt in raw_book.get("excerpts", []):
+                if not isinstance(raw_excerpt, dict) or db.get(Excerpt, str(raw_excerpt.get("id"))) is not None:
+                    continue
+                target_chapter = chapter_map.get(str(raw_excerpt.get("chapter_id")))
+                if target_chapter:
+                    db.add(Excerpt(id=_new_id(raw_excerpt.get("id"), db, Excerpt), user_id=user.id, book_id=target_book_id, chapter_id=target_chapter, start_offset=int(raw_excerpt.get("start_offset") or 0), end_offset=int(raw_excerpt.get("end_offset") or 1), selected_text=str(raw_excerpt.get("selected_text") or "")))
             for raw_note in raw_book.get("notes", []):
                 if isinstance(raw_note, dict) and db.get(Note, str(raw_note.get("id"))) is None:
                     db.add(Note(id=_new_id(raw_note.get("id"), db, Note), user_id=user.id, book_id=target_book_id, title=str(raw_note.get("title") or "未命名")[:500], content=str(raw_note.get("content") or "")))
@@ -214,7 +230,7 @@ def _import_data(db: DbSession, user: User, payload: dict) -> dict:
                     continue
                 conversation = db.get(Conversation, str(raw_conversation.get("id")))
                 if conversation is None:
-                    conversation = Conversation(id=_new_id(raw_conversation.get("id"), db, Conversation), user_id=user.id, book_id=target_book_id, title=str(raw_conversation.get("title") or "新对话")[:500])
+                    conversation = Conversation(id=_new_id(raw_conversation.get("id"), db, Conversation), user_id=user.id, book_id=target_book_id, annotation_id=annotation_map.get(str(raw_conversation.get("annotation_id"))), title=str(raw_conversation.get("title") or "新对话")[:500])
                     db.add(conversation)
                     db.flush()
                 conversation_map[str(raw_conversation.get("id"))] = conversation.id
@@ -247,7 +263,7 @@ def _import_data(db: DbSession, user: User, payload: dict) -> dict:
             except Exception:
                 pass
         raise
-    return {"imported_books": imported_books, "duplicate_books": duplicate_books, "imported_records": imported_records, "secrets_imported": False, "id_map": {"books": book_map, "chapters": chapter_map, "conversations": conversation_map}}
+    return {"imported_books": imported_books, "duplicate_books": duplicate_books, "imported_records": imported_records, "secrets_imported": False, "id_map": {"books": book_map, "chapters": chapter_map, "annotations": annotation_map, "conversations": conversation_map}}
 
 
 @router.get("/data/export")

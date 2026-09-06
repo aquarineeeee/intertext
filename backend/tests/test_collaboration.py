@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.collaboration import MessageCreateRequest, NoteCreateRequest
+from app.schemas.collaboration import ConversationCreateRequest, MessageCreateRequest, NoteCreateRequest
 
 
 def test_note_content_limit_is_enforced() -> None:
@@ -17,3 +17,7 @@ def test_message_content_limit_is_enforced() -> None:
 def test_client_message_id_only_applies_to_user_messages() -> None:
     with pytest.raises(ValidationError):
         MessageCreateRequest(role="assistant", content="answer", client_message_id="client-1")
+
+
+def test_conversation_accepts_an_annotation_reference() -> None:
+    assert ConversationCreateRequest(annotation_id="annotation-1").annotation_id == "annotation-1"

@@ -45,3 +45,23 @@ class AnnotationResponse(BaseModel):
     location_error: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ExcerptCreateRequest(BaseModel):
+    chapter_id: str = Field(min_length=1, max_length=36)
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(gt=0)
+    selected_text: str = Field(min_length=1)
+
+
+class ExcerptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    book_id: str
+    chapter_id: str
+    start_offset: int
+    end_offset: int
+    selected_text: str
+    created_at: datetime
+    updated_at: datetime

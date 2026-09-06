@@ -816,6 +816,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [user, setUser] = useState<ApiUser | null>(null)
   const [books, setBooks] = useState<Book[]>([])
   const [entries, setEntries] = useState<Entry[]>([])
+  const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -841,7 +842,11 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         const apiBooks = await api.listBooks()
         const chapters = await Promise.all(apiBooks.map(book => api.listChapters(book.id)))
         const progress = await Promise.all(apiBooks.map(book => api.getProgress(book.id)))
-        const annotations = await Promise.all(apiBooks.map(book => api.listAnnotations(book.id)))
+        const [annotations, excerpts, bookNotes] = await Promise.all([
+          Promise.all(apiBooks.map(book => api.listAnnotations(book.id))),
+          Promise.all(apiBooks.map(book => api.listExcerpts(book.id))),
+          Promise.all(apiBooks.map(book => api.listNotes(book.id))),
+        ])
         if (cancelled) return
         const chapterCounts = new Map(apiBooks.map((book, index) => [book.id, chapters[index].length]))
         const chapterIndexes = new Map(chapters.flat().map(chapter => [chapter.id, chapter.chapter_index]))
@@ -861,12 +866,26 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         }))
         setEntries(annotations.flatMap((items, bookIndex) => items.map(annotation => ({
           id: annotation.id,
-          type: annotation.note_content ? 'annotation' : 'excerpt',
+          type: 'annotation',
           text: annotation.note_content || annotation.selected_text,
           page: chapterIndexes.get(annotation.chapter_id) ?? 0,
           bookTitle: apiBooks[bookIndex].title,
           bookId: apiBooks[bookIndex].id,
           date: annotation.created_at.slice(0, 10),
+        }))).concat(excerpts.flatMap((items, bookIndex) => items.map(excerpt => ({
+          id: excerpt.id,
+          type: 'excerpt' as const,
+          text: excerpt.selected_text,
+          page: chapterIndexes.get(excerpt.chapter_id) ?? 0,
+          bookTitle: apiBooks[bookIndex].title,
+          bookId: apiBooks[bookIndex].id,
+          date: excerpt.created_at.slice(0, 10),
+        })))))
+        setNotes(bookNotes.flatMap((items, bookIndex) => items.map(note => ({
+          id: note.id,
+          title: note.title,
+          date: note.updated_at.slice(0, 10),
+          bookTitle: apiBooks[bookIndex].title,
         }))))
       } catch (loadError) {
         if (!cancelled) setError(isUnauthorized(loadError) ? '请先在后端建立会话后再访问书架。' : (loadError as Error).message)
@@ -877,13 +896,6 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     void load()
     return () => { cancelled = true }
   }, [])
-
-  const notes: Note[] = entries.filter(entry => entry.type === 'annotation').map(entry => ({
-    id: entry.id,
-    title: entry.text,
-    date: entry.date,
-    bookTitle: entry.bookTitle,
-  }))
 
   if (loading) return <div style={{ padding: 32, color: C.muted }}>Loading library…</div>
   if (error) return <div style={{ padding: 32, color: C.fg }}>{error}</div>

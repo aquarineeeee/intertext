@@ -8,6 +8,7 @@ from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models.book import Book
 from app.models.collaboration import Conversation, Message, Note
+from app.models.document import Annotation
 from app.models.user import User
 from app.schemas.collaboration import (
     ConversationCreateRequest,
@@ -97,7 +98,12 @@ def list_conversations(book_id: str, db: DbSession = Depends(get_db), user: User
 @router.post("/{book_id}/conversations", response_model=ConversationResponse, status_code=201)
 def create_conversation(book_id: str, payload: ConversationCreateRequest, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> Conversation:
     _book(db, book_id, user)
-    conversation = Conversation(user_id=user.id, book_id=book_id, title=payload.title)
+    annotation_id = payload.annotation_id
+    if annotation_id is not None:
+        annotation = db.scalar(select(Annotation).where(Annotation.id == annotation_id, Annotation.book_id == book_id, Annotation.user_id == user.id))
+        if annotation is None:
+            raise AppError(404, "annotation_not_found", "批注不存在")
+    conversation = Conversation(user_id=user.id, book_id=book_id, annotation_id=annotation_id, title=payload.title)
     db.add(conversation)
     db.commit()
     db.refresh(conversation)

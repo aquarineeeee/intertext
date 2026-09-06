@@ -52,6 +52,17 @@ export type ApiAnnotation = {
   updated_at: string
 }
 
+export type ApiExcerpt = {
+  id: string
+  book_id: string
+  chapter_id: string
+  start_offset: number
+  end_offset: number
+  selected_text: string
+  created_at: string
+  updated_at: string
+}
+
 export type ApiNote = {
   id: string
   book_id: string
@@ -64,6 +75,7 @@ export type ApiNote = {
 export type ApiConversation = {
   id: string
   book_id: string
+  annotation_id: string | null
   title: string
   created_at: string
   updated_at: string
@@ -176,6 +188,15 @@ export const api = {
   listChapters: (bookId: string) => request<ApiChapter[]>(`/books/${bookId}/chapters`),
   getProgress: (bookId: string) => request<ApiProgress>(`/books/${bookId}/progress`),
   listAnnotations: (bookId: string) => request<ApiAnnotation[]>(`/books/${bookId}/annotations`),
+  createAnnotation: (bookId: string, annotation: { chapter_id: string; start_offset: number; end_offset: number; selected_text: string; note_content?: string; color?: string }) =>
+    request<ApiAnnotation>(`/books/${bookId}/annotations`, { method: 'POST', body: JSON.stringify(annotation) }),
+  updateAnnotation: (bookId: string, annotationId: string, changes: { note_content?: string | null; color?: string }) =>
+    request<ApiAnnotation>(`/books/${bookId}/annotations/${annotationId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
+  deleteAnnotation: (bookId: string, annotationId: string) => request<void>(`/books/${bookId}/annotations/${annotationId}`, { method: 'DELETE' }),
+  listExcerpts: (bookId: string) => request<ApiExcerpt[]>(`/books/${bookId}/excerpts`),
+  createExcerpt: (bookId: string, excerpt: { chapter_id: string; start_offset: number; end_offset: number; selected_text: string }) =>
+    request<ApiExcerpt>(`/books/${bookId}/excerpts`, { method: 'POST', body: JSON.stringify(excerpt) }),
+  deleteExcerpt: (bookId: string, excerptId: string) => request<void>(`/books/${bookId}/excerpts/${excerptId}`, { method: 'DELETE' }),
   listNotes: (bookId: string) => request<ApiNote[]>(`/books/${bookId}/notes`),
   createNote: (bookId: string, title: string, content: string) =>
     request<ApiNote>(`/books/${bookId}/notes`, {
@@ -189,10 +210,10 @@ export const api = {
     }),
   deleteNote: (bookId: string, noteId: string) => request<void>(`/books/${bookId}/notes/${noteId}`, { method: 'DELETE' }),
   listConversations: (bookId: string) => request<ApiConversation[]>(`/books/${bookId}/conversations`),
-  createConversation: (bookId: string, title = '新对话') =>
+  createConversation: (bookId: string, title = '新对话', annotationId?: string) =>
     request<ApiConversation>(`/books/${bookId}/conversations`, {
       method: 'POST',
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, annotation_id: annotationId }),
     }),
   updateConversation: (bookId: string, conversationId: string, title: string) =>
     request<ApiConversation>(`/books/${bookId}/conversations/${conversationId}`, {

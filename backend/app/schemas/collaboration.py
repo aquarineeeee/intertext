@@ -27,6 +27,7 @@ class NoteResponse(BaseModel):
 
 class ConversationCreateRequest(BaseModel):
     title: str = Field(default="新对话", min_length=1, max_length=500)
+    annotation_id: str | None = Field(default=None, min_length=1, max_length=36)
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -38,6 +39,7 @@ class ConversationResponse(BaseModel):
 
     id: str
     book_id: str
+    annotation_id: str | None
     title: str
     created_at: datetime
     updated_at: datetime

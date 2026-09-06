@@ -20,5 +20,10 @@ def test_import_rejects_wrong_format_and_version() -> None:
             raise AssertionError("invalid payload accepted")
 
 
+def test_import_accepts_current_and_legacy_schema_versions() -> None:
+    for version in (1, 2):
+        assert _parse_payload({"format": "intertext-export", "schema_version": version})["schema_version"] == version
+
+
 def test_export_file_base64_round_trip() -> None:
     assert base64.b64decode(base64.b64encode("文本".encode()).decode()) == "文本".encode()

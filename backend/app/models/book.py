@@ -28,6 +28,7 @@ class Book(Base):
     document_chunks = relationship("DocumentChunk", back_populates="book", cascade="all, delete-orphan")
     reading_progress = relationship("ReadingProgress", back_populates="book", cascade="all, delete-orphan")
     annotations = relationship("Annotation", back_populates="book", cascade="all, delete-orphan")
+    excerpts = relationship("Excerpt", back_populates="book", cascade="all, delete-orphan")
     notes = relationship("Note", back_populates="book", cascade="all, delete-orphan", order_by="Note.created_at")
     conversations = relationship("Conversation", back_populates="book", cascade="all, delete-orphan", order_by="Conversation.created_at")
 

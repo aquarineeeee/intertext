@@ -91,3 +91,28 @@ class Annotation(Base):
     user = relationship("User", back_populates="annotations")
     book = relationship("Book", back_populates="annotations")
     chapter = relationship("Chapter")
+    conversations = relationship("Conversation", back_populates="annotation", passive_deletes=True)
+
+
+class Excerpt(Base):
+    __tablename__ = "excerpts"
+    __table_args__ = (
+        Index("ix_excerpts_user_book", "user_id", "book_id"),
+        Index("ix_excerpts_chapter", "chapter_id"),
+        CheckConstraint("start_offset >= 0", name="ck_excerpts_start_offset"),
+        CheckConstraint("end_offset > start_offset", name="ck_excerpts_offset_order"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    book_id: Mapped[str] = mapped_column(String(36), ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    chapter_id: Mapped[str] = mapped_column(String(36), ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False)
+    start_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_offset: Mapped[int] = mapped_column(Integer, nullable=False)
+    selected_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="excerpts")
+    book = relationship("Book", back_populates="excerpts")
+    chapter = relationship("Chapter")
