@@ -19,6 +19,8 @@ class BookResponse(BaseModel):
 
     id: str
     title: str
+    author: str | None
+    description: str | None
     status: str
     parse_error: str | None
     created_at: datetime

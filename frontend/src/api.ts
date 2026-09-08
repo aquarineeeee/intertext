@@ -9,6 +9,8 @@ export type ApiUser = {
 export type ApiBook = {
   id: string
   title: string
+  author: string | null
+  description: string | null
   status: 'uploaded' | 'parsing' | 'ready' | 'failed' | string
   parse_error: string | null
   created_at: string

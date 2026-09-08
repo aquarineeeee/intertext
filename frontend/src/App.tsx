@@ -865,7 +865,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
           return {
             id: book.id,
             title: book.title,
-            author: book.import_file.file_format.toUpperCase(),
+            author: book.author || book.import_file.file_format.toUpperCase(),
             genre: book.import_file.file_format.toUpperCase(),
             color: C.bookCovers[index % 5],
             status: current === 0 ? 'to-read' : total > 0 && current >= total ? 'read' : 'reading',

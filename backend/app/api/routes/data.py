@@ -71,7 +71,7 @@ def _export_user(db: DbSession, user: User) -> dict:
             messages = list(db.scalars(select(Message).where(Message.conversation_id == conversation.id, Message.user_id == user.id).order_by(Message.created_at, Message.id)).all())
             conversation_rows.append({**_row(conversation, ("id", "annotation_id", "title", "created_at", "updated_at")), "messages": [_row(message, ("id", "role", "content", "client_message_id", "model", "status", "created_at", "updated_at")) for message in messages]})
         book_rows.append({
-            **_row(book, ("id", "title", "status", "parse_error", "created_at", "updated_at")),
+            **_row(book, ("id", "title", "author", "description", "status", "parse_error", "created_at", "updated_at")),
             "import_files": imports,
             "chapters": chapter_rows,
             "progress": _row(progress, ("id", "chapter_id", "updated_at")) if progress else None,
@@ -149,7 +149,7 @@ def _import_data(db: DbSession, user: User, payload: dict) -> dict:
                 duplicate_books += 1
             else:
                 target_id = _new_id(raw_book.get("id"), db, Book)
-                target_book = Book(id=target_id, user_id=user.id, title=str(raw_book.get("title") or "未命名书籍")[:500], status=str(raw_book.get("status") or "uploaded"), parse_error=raw_book.get("parse_error"))
+                target_book = Book(id=target_id, user_id=user.id, title=str(raw_book.get("title") or "未命名书籍")[:500], author=str(raw_book.get("author") or "")[:500] or None, description=raw_book.get("description"), status=str(raw_book.get("status") or "uploaded"), parse_error=raw_book.get("parse_error"))
                 if target_book.status not in {"uploaded", "parsing", "ready", "failed"}:
                     target_book.status = "uploaded"
                 db.add(target_book)

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import re
+import os
+import tempfile
 import unicodedata
-import zipfile
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from io import BytesIO
-from pathlib import PurePosixPath
 from typing import BinaryIO
-from urllib.parse import unquote
-from xml.etree import ElementTree
+
+from ebooklib import ITEM_DOCUMENT, epub
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -24,6 +23,14 @@ from app.storage import Storage
 class ParsedChapter:
     title: str
     text: str
+
+
+@dataclass(frozen=True)
+class ParsedBook:
+    chapters: list[ParsedChapter]
+    title: str | None = None
+    author: str | None = None
+    description: str | None = None
 
 
 def utf16_length(value: str) -> int:
@@ -97,49 +104,58 @@ class _XHTMLTextExtractor(HTMLParser):
             self._heading_parts.append(data)
 
 
-def _local_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
+def _metadata_value(book: epub.EpubBook, name: str) -> str | None:
+    values = book.get_metadata("DC", name)
+    for value, _ in values:
+        if isinstance(value, str) and value.strip():
+            return normalize_text(value)
+    return None
 
 
-def _epub_chapters(content: bytes) -> list[ParsedChapter]:
+def _epub_book(content: bytes) -> ParsedBook:
     try:
-        archive = zipfile.ZipFile(BytesIO(content))
-        with archive:
-            container = ElementTree.fromstring(archive.read("META-INF/container.xml"))
-            rootfile_path = next((node.attrib.get("full-path") for node in container.iter() if _local_name(node.tag) == "rootfile"), None)
-            if not rootfile_path:
-                raise ValueError("缺少 EPUB rootfile")
-            rootfile = PurePosixPath(rootfile_path)
-            opf = ElementTree.fromstring(archive.read(str(rootfile)))
-            manifest: dict[str, tuple[str, str]] = {}
-            for item in opf.iter():
-                if _local_name(item.tag) == "item" and item.attrib.get("id") and item.attrib.get("href"):
-                    manifest[item.attrib["id"]] = (item.attrib["href"], item.attrib.get("media-type", ""))
-            base = rootfile.parent
-            chapters: list[ParsedChapter] = []
-            for itemref in opf.iter():
-                if _local_name(itemref.tag) != "itemref":
-                    continue
-                item = manifest.get(itemref.attrib.get("idref", ""))
-                if not item or item[1] not in {"application/xhtml+xml", "text/html", "application/x-dtbook+xml"}:
-                    continue
-                href = PurePosixPath(unquote(item[0].split("#", 1)[0]))
-                target = base / href
-                if target.is_absolute() or ".." in target.parts or str(target) not in archive.namelist():
-                    raise ValueError("EPUB 章节路径无效")
-                parser = _XHTMLTextExtractor()
-                parser.feed(archive.read(str(target)).decode("utf-8"))
-                paragraphs = _paragraphs("".join(parser.parts))
-                if paragraphs:
-                    chapters.append(ParsedChapter(parser.heading or f"第 {len(chapters) + 1} 章", "\n\n".join(paragraphs)))
-            if not chapters:
-                raise ValueError("EPUB 未找到可读取的章节")
-            return chapters
-    except (KeyError, UnicodeDecodeError, ValueError, ElementTree.ParseError, zipfile.BadZipFile) as exc:
+        file_descriptor, temporary_path = tempfile.mkstemp(prefix="intertext-epub-", suffix=".epub")
+        try:
+            with os.fdopen(file_descriptor, "wb") as temporary:
+                temporary.write(content)
+            book = epub.read_epub(temporary_path, options={"ignore_ncx": True})
+        finally:
+            try:
+                os.unlink(temporary_path)
+            except PermissionError:
+                # EbookLib can retain a ZIP handle when rejecting malformed input.
+                # The OS will reclaim the temporary file after the handle closes.
+                pass
+        chapters: list[ParsedChapter] = []
+        spine_ids = [entry[0] for entry in book.spine if entry and entry[0]]
+        items = [book.get_item_with_id(item_id) for item_id in spine_ids]
+        if not items:
+            items = list(book.get_items_of_type(ITEM_DOCUMENT))
+        for item in items:
+            if item is None or item.get_type() != ITEM_DOCUMENT:
+                continue
+            parser = _XHTMLTextExtractor()
+            parser.feed(item.get_content().decode("utf-8", errors="replace"))
+            paragraphs = _paragraphs("".join(parser.parts))
+            if paragraphs:
+                chapters.append(ParsedChapter(parser.heading or f"第 {len(chapters) + 1} 章", "\n\n".join(paragraphs)))
+        if not chapters:
+            raise ValueError("EPUB 未找到可读取的章节")
+        return ParsedBook(
+            chapters=chapters,
+            title=_metadata_value(book, "title"),
+            author=_metadata_value(book, "creator"),
+            description=_metadata_value(book, "description"),
+        )
+    except Exception as exc:
         raise AppError(422, "parse_failed", "EPUB 内容解析失败") from exc
 
 
 def parse_content(source: BinaryIO, file_format: str, title: str) -> list[ParsedChapter]:
+    return parse_book_content(source, file_format, title).chapters
+
+
+def parse_book_content(source: BinaryIO, file_format: str, title: str) -> ParsedBook:
     content = source.read()
     if file_format == "txt":
         try:
@@ -148,9 +164,9 @@ def parse_content(source: BinaryIO, file_format: str, title: str) -> list[Parsed
             raise AppError(422, "parse_failed", "TXT 文件必须使用 UTF-8 编码") from exc
         if not paragraphs:
             raise AppError(422, "parse_failed", "文件没有可读取的正文")
-        return [ParsedChapter(title, "\n\n".join(paragraphs))]
+        return ParsedBook([ParsedChapter(title, "\n\n".join(paragraphs))])
     if file_format == "epub":
-        return _epub_chapters(content)
+        return _epub_book(content)
     raise AppError(422, "parse_failed", "不支持的解析格式")
 
 
@@ -189,9 +205,15 @@ def parse_book(db: Session, book_id: str, storage: Storage) -> Book:
     db.commit()
     try:
         with storage.open_file(imported.storage_key) as source:
-            parsed = parse_content(source, imported.file_format, book.title)
+            parsed = parse_book_content(source, imported.file_format, book.title)
         db.refresh(book)
-        save_parsed_book(db, book, parsed)
+        if parsed.title:
+            book.title = parsed.title[:500]
+        if parsed.author:
+            book.author = parsed.author[:500]
+        if parsed.description:
+            book.description = parsed.description
+        save_parsed_book(db, book, parsed.chapters)
         book.status = "ready"
         book.parse_error = None
         db.commit()
