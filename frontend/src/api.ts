@@ -32,6 +32,11 @@ export type ApiChapter = {
   text_length: number
 }
 
+export type ApiChapterContent = ApiChapter & {
+  text: string
+  chunks: Array<{ id: string; chunk_index: number; text: string; start_offset: number; end_offset: number }>
+}
+
 export type ApiProgress = {
   id: string
   book_id: string
@@ -188,7 +193,9 @@ export const api = {
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   listBooks: () => request<ApiBook[]>('/books'),
   listChapters: (bookId: string) => request<ApiChapter[]>(`/books/${bookId}/chapters`),
+  getChapter: (bookId: string, chapterId: string) => request<ApiChapterContent>(`/books/${bookId}/chapters/${chapterId}`),
   getProgress: (bookId: string) => request<ApiProgress>(`/books/${bookId}/progress`),
+  saveProgress: (bookId: string, chapterId: string) => request<NonNullable<ApiProgress>>(`/books/${bookId}/progress`, { method: 'PUT', body: JSON.stringify({ chapter_id: chapterId }) }),
   listAnnotations: (bookId: string) => request<ApiAnnotation[]>(`/books/${bookId}/annotations`),
   createAnnotation: (bookId: string, annotation: { chapter_id: string; start_offset: number; end_offset: number; selected_text: string; note_content?: string; color?: string }) =>
     request<ApiAnnotation>(`/books/${bookId}/annotations`, { method: 'POST', body: JSON.stringify(annotation) }),
