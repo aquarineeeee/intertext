@@ -7,6 +7,16 @@
   font-family: 'Source Sans 3', system-ui, sans-serif;
 }
 
+.paratext-state {
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.paratext-state p { margin: 0; font-family: 'Lora', Georgia, serif; }
+
 .paratext-nav {
   width: min(1720px, calc(100% - 64px));
   height: 62px;

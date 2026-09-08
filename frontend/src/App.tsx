@@ -131,14 +131,14 @@ function organizeWeeks(days: HeatDay[]): (HeatDay | null)[][] {
 }
 
 // ─── Books Panel ──────────────────────────────────────────────────────────────
-function BookCard({ book, onOpen }: { book: Book; onOpen: () => void }) {
+function BookCard({ book, onOpen }: { book: Book; onOpen: (bookId: string | number) => void }) {
   const [hovered, setHovered] = useState(false)
 
   return (
     <button
       type="button"
       aria-label={`Open ${book.title}`}
-      onClick={onOpen}
+      onClick={() => onOpen(book.id)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -194,14 +194,14 @@ function BookCard({ book, onOpen }: { book: Book; onOpen: () => void }) {
   )
 }
 
-function BookListRow({ book, onOpen }: { book: Book; onOpen: () => void }) {
+function BookListRow({ book, onOpen }: { book: Book; onOpen: (bookId: string | number) => void }) {
   const [hovered, setHovered] = useState(false)
 
   return (
     <button
       type="button"
       aria-label={`Open ${book.title}`}
-      onClick={onOpen}
+      onClick={() => onOpen(book.id)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -238,7 +238,7 @@ function BookListRow({ book, onOpen }: { book: Book; onOpen: () => void }) {
   )
 }
 
-function BooksPanel({ books, loading, onBookImported, onOpenBook }: { books: Book[]; loading: boolean; onBookImported: (file: File) => Promise<void>; onOpenBook: () => void }) {
+function BooksPanel({ books, loading, onBookImported, onOpenBook }: { books: Book[]; loading: boolean; onBookImported: (file: File) => Promise<void>; onOpenBook: (bookId: string | number) => void }) {
   const [view, setView] = useState<'shelf' | 'list'>('shelf')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -872,15 +872,17 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
             progress: total > 0 ? Math.round((current / total) * 100) : 0,
           }
         }))
-        setEntries(annotations.flatMap((items, bookIndex) => items.map(annotation => ({
+        setEntries([
+          ...annotations.flatMap((items, bookIndex) => items.map(annotation => ({
           id: annotation.id,
-          type: 'annotation',
+          type: 'annotation' as const,
           text: annotation.note_content || annotation.selected_text,
           page: chapterIndexes.get(annotation.chapter_id) ?? 0,
           bookTitle: apiBooks[bookIndex].title,
           bookId: apiBooks[bookIndex].id,
           date: annotation.created_at.slice(0, 10),
-        }))).concat(excerpts.flatMap((items, bookIndex) => items.map(excerpt => ({
+          }))),
+          ...excerpts.flatMap((items, bookIndex) => items.map(excerpt => ({
           id: excerpt.id,
           type: 'excerpt' as const,
           text: excerpt.selected_text,
@@ -888,7 +890,8 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
           bookTitle: apiBooks[bookIndex].title,
           bookId: apiBooks[bookIndex].id,
           date: excerpt.created_at.slice(0, 10),
-        })))))
+          }))),
+        ])
         setNotes(bookNotes.flatMap((items, bookIndex) => items.map(note => ({
           id: note.id,
           title: note.title,
@@ -917,7 +920,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     }}>
       {/* Left: Library (full height) */}
       <div style={{ overflow: 'hidden' }}>
-        <BooksPanel books={books} loading={loading} onBookImported={handleBookImported} onOpenBook={() => onNavigate('/paratext')} />
+        <BooksPanel books={books} loading={loading} onBookImported={handleBookImported} onOpenBook={bookId => onNavigate(`/paratext?bookId=${encodeURIComponent(String(bookId))}`)} />
       </div>
 
       {/* Right: Annotations (top) + Notes (bottom) */}
