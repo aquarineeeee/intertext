@@ -946,7 +946,7 @@ export default function App() {
 
   const navigate = (nextPath: string) => {
     window.history.pushState({}, '', nextPath)
-    setPath(nextPath)
+    setPath(new URL(nextPath, window.location.href).pathname)
   }
 
   if (path === '/settings') return <SettingsPage onNavigate={navigate} />
