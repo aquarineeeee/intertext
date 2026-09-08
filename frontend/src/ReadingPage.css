@@ -1,0 +1,90 @@
+.reading-page-root {
+  color: var(--color-ink);
+}
+
+.bg-cream { background-color: var(--color-cream); }
+.bg-surface { background-color: var(--color-surface); }
+.bg-rule { background-color: var(--color-rule); }
+.text-ink { color: var(--color-ink); }
+.text-mid { color: var(--color-mid); }
+.text-faint { color: var(--color-faint); }
+.border-rule { border-color: var(--color-rule); }
+
+.reading-hover-ink:hover { color: var(--color-ink); }
+.reading-hover-mid:hover { color: var(--color-mid); }
+.reading-toc-item:hover,
+.reading-toolbar-item:hover { color: var(--color-ink); background-color: var(--color-surface); }
+.reading-placeholder-faint::placeholder { color: var(--color-faint); }
+
+.ann-bookmark {
+  border-bottom: 1.5px dashed var(--color-amber);
+  padding-bottom: 1px;
+}
+
+.ann-annotation {
+  border-bottom: 1.5px solid var(--color-umber);
+  padding-bottom: 1px;
+}
+
+.ann-discussion {
+  text-decoration-line: underline;
+  text-decoration-style: double;
+  text-decoration-color: var(--color-slate);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.ann-highlight {
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.ann-highlight:hover { opacity: 0.65; }
+
+@keyframes reading-span-flash {
+  0%, 100% { background-color: transparent; }
+  40% { background-color: color-mix(in srgb, var(--color-amber) 28%, transparent); }
+}
+
+@keyframes reading-entry-flash {
+  0%, 100% { opacity: 1; }
+  40% { opacity: 0.35; }
+}
+
+.flash-span { animation: reading-span-flash 0.65s ease; border-radius: 2px; }
+.flash-entry { animation: reading-entry-flash 0.65s ease; }
+
+@media (max-width: 760px) {
+  .reading-page-root .reading-main {
+    flex-direction: column;
+  }
+
+  .reading-page-root .reading-area {
+    flex: 1 1 60%;
+    min-height: 0;
+  }
+
+  .reading-page-root .reading-annotations {
+    width: 100%;
+    flex: 0 0 40%;
+    min-height: 0;
+    border-top: 1px solid var(--color-rule);
+    border-left: 0 !important;
+  }
+
+  .reading-page-root .reading-content {
+    max-width: 100%;
+    padding: 2.5rem 1.5rem;
+  }
+
+  .reading-page-root .reading-header-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reading-page-root .reading-header-chapter,
+  .reading-page-root .reading-header-title > .mx-2 {
+    display: none;
+  }
+}

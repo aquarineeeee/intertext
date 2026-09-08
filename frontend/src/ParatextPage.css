@@ -1,0 +1,154 @@
+.paratext-page {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: var(--paratext-ink);
+  background: var(--paratext-bg);
+  font-family: 'Source Sans 3', system-ui, sans-serif;
+}
+
+.paratext-nav {
+  width: min(1720px, calc(100% - 64px));
+  height: 62px;
+  display: flex;
+  align-items: center;
+  margin: 0 auto;
+}
+
+.paratext-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 0;
+  border: 0;
+  color: var(--paratext-muted);
+  background: transparent;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.paratext-back:hover { color: var(--paratext-ink); }
+.paratext-back span { font-size: 15px; line-height: 1; }
+
+.paratext-layout {
+  width: min(1720px, calc(100% - 64px));
+  height: calc(100% - 86px);
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(340px, 2fr);
+  margin: 0 auto 24px;
+}
+
+.paratext-archive {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-right: clamp(28px, 3vw, 52px);
+}
+
+.paratext-book-intro { display: flex; gap: clamp(22px, 2.3vw, 38px); padding-bottom: 24px; }
+
+.paratext-cover {
+  position: relative;
+  width: 176px;
+  height: 248px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--paratext-rule-strong);
+  color: var(--paratext-ink);
+  background-color: var(--paratext-cover);
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 15px, color-mix(in srgb, var(--paratext-accent) 18%, transparent) 15px, color-mix(in srgb, var(--paratext-accent) 18%, transparent) 16px);
+}
+
+.paratext-cover-spine { position: absolute; top: 0; bottom: 0; left: 13px; width: 1px; background: color-mix(in srgb, var(--paratext-accent) 38%, transparent); }
+.paratext-cover-copy { position: relative; display: flex; flex-direction: column; align-items: center; padding: 24px; text-align: center; }
+.paratext-cover-copy strong { font-family: 'Lora', Georgia, serif; font-size: 20px; font-weight: 500; line-height: 1.25; }
+.paratext-cover-copy span { margin-top: 12px; color: var(--paratext-muted); font-size: 11px; }
+
+.paratext-book-meta { min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 2px 0; }
+.paratext-book-meta h1, .paratext-synopsis h2, .paratext-section-heading h2, .paratext-ledger-header h2 { margin: 0; font-family: 'Lora', Georgia, serif; font-weight: 500; letter-spacing: 0; }
+.paratext-book-meta h1 { font-size: 31px; line-height: 1.15; }
+.paratext-subtitle { margin: 5px 0 0; color: var(--paratext-muted); font-size: 13px; }
+.paratext-author { margin: 8px 0 0; font-family: 'Lora', Georgia, serif; font-size: 15px; font-style: italic; }
+
+.paratext-progress-block { padding-top: 15px; border-top: 1px solid var(--paratext-rule); }
+.paratext-progress-label { display: flex; justify-content: space-between; gap: 16px; color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+.paratext-progress-label strong { color: var(--paratext-ink); font-weight: 500; white-space: nowrap; }
+.paratext-progress-track { height: 2px; margin-top: 8px; overflow: hidden; background: var(--paratext-rule); }
+.paratext-progress-track span { display: block; width: 42%; height: 100%; background: var(--paratext-ink); }
+.paratext-continue { width: 100%; margin-top: 13px; padding: 11px 14px; border: 0; color: var(--paratext-bg); background: var(--paratext-ink); font-family: 'Source Sans 3', system-ui, sans-serif; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; }
+.paratext-continue:hover { background: var(--paratext-accent); }
+
+.paratext-synopsis { padding: 18px 0 20px; border-top: 1px solid var(--paratext-rule); }
+.paratext-synopsis h2, .paratext-section-heading h2 { font-size: 15px; }
+.paratext-synopsis p { max-width: 75ch; margin: 9px 0 0; font-family: 'Lora', Georgia, serif; font-size: 14px; line-height: 1.6; }
+.paratext-synopsis p + p { color: var(--paratext-muted); }
+
+.paratext-contents { min-height: 0; flex: 1; display: flex; flex-direction: column; padding-top: 15px; border-top: 1px solid var(--paratext-rule); }
+.paratext-section-heading { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 10px; }
+.paratext-section-heading span { color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+.paratext-chapter-list { min-height: 0; overflow-y: auto; border-top: 1px solid var(--paratext-rule); }
+.paratext-chapter { width: 100%; min-height: 48px; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px 10px 9px 0; border: 0; border-bottom: 1px solid var(--paratext-rule); color: var(--paratext-muted); background: transparent; text-align: left; cursor: pointer; }
+.paratext-chapter:hover { color: var(--paratext-ink); background: color-mix(in srgb, var(--paratext-surface-muted) 68%, transparent); }
+.paratext-chapter.is-current { padding-left: 10px; color: var(--paratext-ink); background: var(--paratext-surface-muted); }
+.paratext-chapter-number, .paratext-chapter-page { font-family: 'DM Mono', monospace; font-size: 10px; }
+.paratext-chapter-number { color: var(--paratext-muted); }
+.paratext-chapter.is-current .paratext-chapter-number { color: var(--paratext-ink); font-weight: 500; }
+.paratext-chapter-title { overflow: hidden; font-family: 'Lora', Georgia, serif; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.paratext-chapter-page { color: var(--paratext-muted); white-space: nowrap; }
+
+.paratext-ledger { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding-left: clamp(28px, 3vw, 52px); border-left: 1px solid var(--paratext-rule); }
+.paratext-ledger-header { flex: 0 0 auto; padding-bottom: 15px; border-bottom: 1px solid var(--paratext-rule); }
+.paratext-ledger-header h2 { font-size: 26px; }
+.paratext-ledger-scroll { min-height: 0; overflow-y: auto; padding: 18px 12px 0 0; }
+.paratext-ledger-group + .paratext-ledger-group { padding-top: 26px; }
+.paratext-month { display: flex; align-items: center; gap: 13px; }
+.paratext-month span { color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase; white-space: nowrap; }
+.paratext-month i { width: 100%; height: 1px; background: var(--paratext-rule); }
+.paratext-entries { margin-top: 9px; border-top: 1px solid var(--paratext-rule); }
+.paratext-entry { padding: 14px 0; border-bottom: 1px solid var(--paratext-rule); }
+.paratext-entry-main { display: flex; align-items: flex-start; gap: 16px; }
+.paratext-entry-main p { min-width: 0; flex: 1; margin: 0; color: var(--paratext-ink); font-family: 'Lora', Georgia, serif; font-size: 14px; line-height: 1.45; }
+.paratext-entry-excerpt .paratext-entry-main p { font-style: italic; }
+.paratext-entry-note .paratext-entry-main p { color: var(--paratext-ink); }
+.paratext-entry-annotation .paratext-entry-main p { padding-left: 12px; border-left: 2px solid var(--paratext-accent); font-style: italic; }
+.paratext-entry time { flex: 0 0 auto; padding-top: 2px; color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+.paratext-entry-note { margin: 6px 36px 0 14px; color: var(--paratext-muted); font-size: 12px; line-height: 1.45; }
+
+@media (max-width: 800px) {
+  .paratext-page { height: auto; min-height: 100%; overflow: auto; }
+  .paratext-nav, .paratext-layout { width: min(100% - 36px, 620px); }
+  .paratext-nav { height: 56px; }
+  .paratext-layout { height: auto; display: block; margin-bottom: 28px; }
+  .paratext-archive { padding-right: 0; }
+  .paratext-book-intro { gap: 18px; }
+  .paratext-cover { width: 126px; height: 184px; }
+  .paratext-cover-copy { padding: 16px; }
+  .paratext-cover-copy strong { font-size: 16px; }
+  .paratext-book-meta h1 { font-size: 25px; }
+  .paratext-synopsis p + p { display: none; }
+  .paratext-contents { min-height: 300px; }
+  .paratext-ledger { min-height: 410px; margin-top: 28px; padding: 22px 0 0; border-top: 1px solid var(--paratext-rule); border-left: 0; }
+  .paratext-ledger-scroll { padding-right: 4px; }
+}
+
+@media (max-width: 460px) {
+  .paratext-book-intro { align-items: flex-start; }
+  .paratext-cover { width: 106px; height: 158px; }
+  .paratext-cover-copy strong { font-size: 14px; }
+  .paratext-cover-copy span { margin-top: 8px; font-size: 10px; }
+  .paratext-book-meta { min-height: 158px; }
+  .paratext-book-meta h1 { font-size: 22px; }
+  .paratext-subtitle { font-size: 11px; }
+  .paratext-author { margin-top: 5px; font-size: 13px; }
+  .paratext-progress-block { padding-top: 9px; }
+  .paratext-continue { margin-top: 9px; padding: 9px 8px; font-size: 9px; }
+  .paratext-chapter { grid-template-columns: 31px minmax(0, 1fr) auto; gap: 6px; }
+  .paratext-chapter-title { font-size: 13px; }
+  .paratext-chapter-page { font-size: 9px; }
+}

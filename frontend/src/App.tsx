@@ -3,6 +3,8 @@ import { api, isUnauthorized, type ApiUser } from './api'
 import { palette as C } from './theme'
 import SettingsPage from './SettingsPage'
 import AuthPage from './AuthPage'
+import ReadingPage from './ReadingPage'
+import ParatextPage from './ParatextPage'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const SECTION_HEADER_HEIGHT = 114
@@ -129,16 +131,19 @@ function organizeWeeks(days: HeatDay[]): (HeatDay | null)[][] {
 }
 
 // ─── Books Panel ──────────────────────────────────────────────────────────────
-function BookCard({ book }: { book: Book }) {
+function BookCard({ book, onOpen }: { book: Book; onOpen: () => void }) {
   const [hovered, setHovered] = useState(false)
 
   return (
-    <div
+    <button
+      type="button"
+      aria-label={`Open ${book.title}`}
+      onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         background: C.card,
-        borderRadius: 3,
+        padding: 0, border: 0, borderRadius: 3,
         overflow: 'hidden',
         cursor: 'pointer',
         transform: hovered ? 'translateY(-2px)' : 'none',
@@ -185,19 +190,22 @@ function BookCard({ book }: { book: Book }) {
           </div>
         )}
       </div>
-    </div>
+    </button>
   )
 }
 
-function BookListRow({ book }: { book: Book }) {
+function BookListRow({ book, onOpen }: { book: Book; onOpen: () => void }) {
   const [hovered, setHovered] = useState(false)
 
   return (
-    <div
+    <button
+      type="button"
+      aria-label={`Open ${book.title}`}
+      onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'flex', alignItems: 'center', gap: 12,
+        display: 'flex', width: '100%', border: 0, textAlign: 'left', font: 'inherit', alignItems: 'center', gap: 12,
         padding: '10px 12px', minHeight: 74,
         background: hovered ? 'rgba(81,74,69,0.03)' : 'transparent',
         borderBottom: `1px solid ${C.border}`,
@@ -226,11 +234,11 @@ function BookListRow({ book }: { book: Book }) {
           <div style={{ width: `${book.progress}%`, height: '100%', background: 'rgba(81,74,69,0.28)' }} />
         </div>
       )}
-    </div>
+    </button>
   )
 }
 
-function BooksPanel({ books, loading, onBookImported }: { books: Book[]; loading: boolean; onBookImported: (file: File) => Promise<void> }) {
+function BooksPanel({ books, loading, onBookImported, onOpenBook }: { books: Book[]; loading: boolean; onBookImported: (file: File) => Promise<void>; onOpenBook: () => void }) {
   const [view, setView] = useState<'shelf' | 'list'>('shelf')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -302,7 +310,7 @@ function BooksPanel({ books, loading, onBookImported }: { books: Book[]; loading
            alignContent: 'start',
          }}>
            {books.map(book => (
-             <BookCard key={book.id} book={book} />
+             <BookCard key={book.id} book={book} onOpen={onOpenBook} />
            ))}
            <button
              type="button"
@@ -347,7 +355,7 @@ function BooksPanel({ books, loading, onBookImported }: { books: Book[]; loading
        ) : (
          <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
            {books.map(book => (
-             <BookListRow key={book.id} book={book} />
+             <BookListRow key={book.id} book={book} onOpen={onOpenBook} />
            ))}
          </div>
        )}
@@ -909,7 +917,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     }}>
       {/* Left: Library (full height) */}
       <div style={{ overflow: 'hidden' }}>
-        <BooksPanel books={books} loading={loading} onBookImported={handleBookImported} />
+        <BooksPanel books={books} loading={loading} onBookImported={handleBookImported} onOpenBook={() => onNavigate('/paratext')} />
       </div>
 
       {/* Right: Annotations (top) + Notes (bottom) */}
@@ -941,5 +949,7 @@ export default function App() {
   if (path === '/settings') return <SettingsPage onNavigate={navigate} />
   if (path === '/login' || path === '/register') return <AuthPage mode={path === '/register' ? 'register' : 'login'} onNavigate={navigate} />
   if (path === '/library') return <LibraryApp onNavigate={navigate} />
+  if (path === '/paratext') return <ParatextPage onNavigate={navigate} />
+  if (path === '/read') return <ReadingPage />
   return <LandingCover onNavigate={navigate} />
 }

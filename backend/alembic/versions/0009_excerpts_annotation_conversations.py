@@ -1,13 +1,13 @@
 """add excerpts and annotation conversations
 
-Revision ID: 0009_excerpts_annotation_conversations
+Revision ID: 0009_excerpts
 Revises: 0008_mcp
 """
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0009_excerpts_annotation_conversations"
+revision = "0009_excerpts"
 down_revision = "0008_mcp"
 branch_labels = None
 depends_on = None
