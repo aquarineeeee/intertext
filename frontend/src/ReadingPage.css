@@ -2,6 +2,42 @@
   color: var(--color-ink);
 }
 
+.reading-page-root .reading-content {
+  width: 70%;
+}
+
+.reading-annotations-resizer {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.reading-annotations-resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  content: '';
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.reading-annotations-resizer:hover::after,
+.reading-annotations-resizer.is-resizing::after {
+  background: var(--color-amber);
+}
+
+body:has(.reading-annotations-resizer.is-resizing) {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .bg-cream { background-color: var(--color-cream); }
 .bg-surface { background-color: var(--color-surface); }
 .bg-rule { background-color: var(--color-rule); }
@@ -64,15 +100,23 @@
     min-height: 0;
   }
 
-  .reading-page-root .reading-annotations {
-    width: 100%;
-    flex: 0 0 40%;
+  .reading-page-root .reading-annotations-wrap {
+    width: 100% !important;
+    flex-basis: 40% !important;
     min-height: 0;
+  }
+
+  .reading-page-root .reading-annotations {
     border-top: 1px solid var(--color-rule);
     border-left: 0 !important;
   }
 
+  .reading-annotations-resizer {
+    display: none;
+  }
+
   .reading-page-root .reading-content {
+    width: 100%;
     max-width: 100%;
     padding: 2.5rem 1.5rem;
   }

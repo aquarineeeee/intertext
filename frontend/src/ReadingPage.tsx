@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment, type CSSProperties, type ReactNode } from 'react'
+import { useState, useRef, useEffect, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage } from './api'
 import { palette } from './theme'
 import './ReadingPage.css'
@@ -340,9 +340,11 @@ export default function App() {
   const [connector, setConnector] = useState<Connector | null>(null)
   const [aiTypingId, setAiTypingId] = useState<string | null>(null)
   const [replies, setReplies] = useState<Record<string, string>>({})
-  const [progress, setProgress] = useState(0)
+  const [annotationWidth, setAnnotationWidth] = useState(288)
+  const [isResizingAnnotations, setIsResizingAnnotations] = useState(false)
 
   const noteRef = useRef<HTMLInputElement>(null)
+  const annotationResizeStart = useRef<{ x: number; width: number } | null>(null)
 
   const activeBook = book || { ...FALLBACK_BOOK, id: '', author: FALLBACK_BOOK.author, description: null, status: 'ready', parse_error: null, created_at: '', updated_at: '', import_file: { id: '', file_name: '', file_format: '', file_size: 0, file_hash: '', created_at: '' } }
   const activeChapter = chapters.find(item => item.id === chapterId) || chapters[0]
@@ -408,6 +410,26 @@ export default function App() {
     void load()
     return () => { cancelled = true }
   }, [requestedBookId, requestedChapterId])
+
+  useEffect(() => {
+    if (!isResizingAnnotations) return
+    const handlePointerMove = (event: PointerEvent) => {
+      const start = annotationResizeStart.current
+      if (!start) return
+      const maxWidth = Math.max(240, Math.min(560, window.innerWidth - 420))
+      setAnnotationWidth(Math.min(maxWidth, Math.max(240, start.width + start.x - event.clientX)))
+    }
+    const handlePointerUp = () => {
+      annotationResizeStart.current = null
+      setIsResizingAnnotations(false)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [isResizingAnnotations])
 
   const sorted = [...annotations].sort((a, b) => {
     if (a.paragraphIndex !== b.paragraphIndex) return a.paragraphIndex - b.paragraphIndex
@@ -571,6 +593,12 @@ export default function App() {
     setAnnotations(prev => prev.map(a => a.id === id ? { ...a, expanded: !a.expanded } : a))
   }
 
+  const handleAnnotationResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    annotationResizeStart.current = { x: event.clientX, width: annotationWidth }
+    setIsResizingAnnotations(true)
+  }
+
   // ── Toolbar geometry ───────────────────────────────────────────────────────
 
   const tbLeft = sel ? Math.min(Math.max(130, sel.rect.left + sel.rect.width / 2), window.innerWidth - 130) : 0
@@ -633,13 +661,6 @@ export default function App() {
 
         <div className="w-14" />
 
-        {/* Progress bar */}
-        <div className="absolute bottom-0 left-0 right-0 h-px" style={{ background: 'var(--color-rule)' }}>
-          <div
-            className="h-full"
-            style={{ width: `${progress * 100}%`, background: 'var(--color-amber)', transition: 'width 120ms linear' }}
-          />
-        </div>
       </header>
 
       {/* ── Main ───────────────────────────────────────────────────────────── */}
@@ -649,12 +670,8 @@ export default function App() {
         <div
           className="reading-area flex-1 overflow-y-auto"
           onMouseUp={handleMouseUp}
-          onScroll={e => {
-            const el = e.currentTarget
-            setProgress(el.scrollHeight > el.clientHeight ? el.scrollTop / (el.scrollHeight - el.clientHeight) : 0)
-          }}
         >
-          <div className="reading-content max-w-[66ch] mx-auto px-6 py-16">
+          <div className="reading-content mx-auto px-6 py-16">
             <h1
               className="text-ink mb-1"
               style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: '1.55rem' }}
@@ -682,37 +699,46 @@ export default function App() {
 
         {/* Annotation panel */}
         <div
-          className="reading-annotations shrink-0 w-72 overflow-y-auto bg-cream"
-          style={{ borderLeft: '1px solid var(--color-rule)' }}
+          className="reading-annotations-wrap shrink-0 relative"
+          style={{ width: annotationWidth, flexBasis: annotationWidth }}
         >
-          <div className="px-5 py-6">
-            <p
-              className="text-xs text-faint mb-6 uppercase"
-              style={{ fontFamily: 'var(--font-ui)', letterSpacing: '0.12em' }}
-            >
-              批注
-            </p>
-
-            {sorted.length === 0 && (
-              <p className="text-sm text-faint" style={{ fontFamily: 'var(--font-ui)' }}>
-                选中文字，开始批注或提问。
+          <div
+            className={`reading-annotations-resizer${isResizingAnnotations ? ' is-resizing' : ''}`}
+            onPointerDown={handleAnnotationResizeStart}
+          />
+          <div
+            className="reading-annotations h-full overflow-y-auto bg-cream"
+            style={{ borderLeft: '1px solid var(--color-rule)' }}
+          >
+            <div className="px-5 py-6">
+              <p
+                className="text-xs text-faint mb-6 uppercase"
+                style={{ fontFamily: 'var(--font-ui)', letterSpacing: '0.12em' }}
+              >
+                批注
               </p>
-            )}
 
-            <div className="space-y-7">
-              {sorted.map(ann => (
-                <AnnotationEntry
-                  key={ann.id}
-                  ann={ann}
-                  onHover={setHoveredId}
-                  onToHighlight={scrollToHighlight}
-                  onToggle={toggleExpand}
-                  replyVal={replies[ann.id] ?? ''}
-                  onReplyChange={(id, v) => setReplies(prev => ({ ...prev, [id]: v }))}
-                  onReplySubmit={handleReply}
-                  isTyping={aiTypingId === ann.id}
-                />
-              ))}
+              {sorted.length === 0 && (
+                <p className="text-sm text-faint" style={{ fontFamily: 'var(--font-ui)' }}>
+                  选中文字，开始批注或提问。
+                </p>
+              )}
+
+              <div className="space-y-7">
+                {sorted.map(ann => (
+                  <AnnotationEntry
+                    key={ann.id}
+                    ann={ann}
+                    onHover={setHoveredId}
+                    onToHighlight={scrollToHighlight}
+                    onToggle={toggleExpand}
+                    replyVal={replies[ann.id] ?? ''}
+                    onReplyChange={(id, v) => setReplies(prev => ({ ...prev, [id]: v }))}
+                    onReplySubmit={handleReply}
+                    isTyping={aiTypingId === ann.id}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </div>
