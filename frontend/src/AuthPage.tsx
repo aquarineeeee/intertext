@@ -57,7 +57,7 @@ function AuthPage({ mode, onNavigate }: AuthPageProps) {
       <div className="auth-grain" aria-hidden="true" />
       <section className="auth-layout" aria-labelledby={isRegister ? 'auth-title' : undefined} aria-label={!isRegister ? 'Sign in' : undefined}>
         <div className="auth-center">
-          <button className="auth-logo" type="button" onClick={() => onNavigate('/')} aria-label="返回 Intertext 首页">Intertext</button>
+          <button className="auth-logo" type="button" onClick={() => onNavigate('/')} aria-label="返回 Library 首页">Library</button>
           <div className="auth-form-wrap">
             {isRegister && <div className="auth-card-heading"><h1 id="auth-title">Create an account</h1></div>}
             <form onSubmit={submit} noValidate>
@@ -69,7 +69,7 @@ function AuthPage({ mode, onNavigate }: AuthPageProps) {
               <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? '请稍候…' : isRegister ? 'Create account' : 'Sign in'}</button>
             </form>
             {!isRegister && <p className="auth-forgot">Forgot password?</p>}
-            <div className="auth-account-link"><span>{isRegister ? 'Already have an account?' : 'New to Intertext?'}</span><button type="button" onClick={() => switchMode(isRegister ? 'login' : 'register')}>{isRegister ? 'Sign in' : 'Create new account'}</button></div>
+            <div className="auth-account-link"><span>{isRegister ? 'Already have an account?' : 'New to Library?'}</span><button type="button" onClick={() => switchMode(isRegister ? 'login' : 'register')}>{isRegister ? 'Sign in' : 'Create new account'}</button></div>
           </div>
         </div>
       </section>

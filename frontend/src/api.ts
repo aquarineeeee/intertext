@@ -242,6 +242,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(message),
     }),
+  deleteBook: (bookId: string | number) => request<void>(`/books/${bookId}`, { method: 'DELETE' }),
   importBook: (file: File) => {
     const body = new FormData()
     body.append('file', file)

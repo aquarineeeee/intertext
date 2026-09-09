@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { api, isUnauthorized, type ApiUser } from './api'
+import { api, isUnauthorized } from './api'
 import { palette as C } from './theme'
 import SettingsPage from './SettingsPage'
 import AuthPage from './AuthPage'
@@ -19,10 +19,30 @@ function SvgSettings() {
   )
 }
 
-function SvgChevronRight() {
+function SvgSearch() {
   return (
-    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 18l6-6-6-6" />
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx={11} cy={11} r={8} />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  )
+}
+
+function SvgX() {
+  return (
+    <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  )
+}
+
+function SvgTrash() {
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v5M14 11v5" />
     </svg>
   )
 }
@@ -34,7 +54,6 @@ interface Book {
   id: string | number
   title: string
   author: string
-  genre: string
   color: string
   status: BookStatus
   progress: number
@@ -55,193 +74,331 @@ interface Note {
   title: string
   date: string
   bookTitle: string | null
+  bookId: string | number
 }
 
-interface HeatDay {
-  date: Date
-  pages: number
-  level: 0 | 1 | 2 | 3 | 4
-}
+function PanelSearch({ onSearch }: { onSearch: (query: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [value, setValue] = useState('')
+  const [hasSearch, setHasSearch] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const BOOKS: Book[] = [
-  { id: 1, title: 'The Name of the Rose', author: 'Umberto Eco', genre: 'Historical Fiction', color: C.bookCovers[0], status: 'reading', progress: 68 },
-  { id: 2, title: 'Invisible Cities', author: 'Italo Calvino', genre: 'Literary Fiction', color: C.bookCovers[1], status: 'read', progress: 100 },
-  { id: 3, title: 'The Plague', author: 'Albert Camus', genre: 'Philosophy', color: C.bookCovers[2], status: 'reading', progress: 34 },
-  { id: 4, title: 'The Master and Margarita', author: 'Mikhail Bulgakov', genre: 'Satire', color: C.bookCovers[3], status: 'read', progress: 100 },
-  { id: 5, title: 'Stoner', author: 'John Williams', genre: 'Literary Fiction', color: C.bookCovers[4], status: 'to-read', progress: 0 },
-  { id: 6, title: 'Ways of Seeing', author: 'John Berger', genre: 'Art Criticism', color: C.bookCovers[5], status: 'read', progress: 100 },
-  { id: 7, title: 'Ficciones', author: 'Jorge Luis Borges', genre: 'Short Stories', color: C.bookCovers[6], status: 'read', progress: 100 },
-  { id: 8, title: 'The Stranger', author: 'Albert Camus', genre: 'Philosophy', color: C.bookCovers[5], status: 'to-read', progress: 0 },
-]
+  const openSearch = () => {
+    setIsOpen(true)
+    window.setTimeout(() => inputRef.current?.focus(), 0)
+  }
 
-const ENTRIES: Entry[] = [
-  { id: 1, bookId: 1, bookTitle: 'The Name of the Rose', type: 'annotation', text: 'The labyrinth is a figure of the world — not what we know, but what we fear we cannot know.', page: 142, date: '2026-08-28' },
-  { id: 2, bookId: 2, bookTitle: 'Invisible Cities', type: 'excerpt', text: 'Cities, like dreams, are made of desires and fears, even if the thread of their discourse is secret, their rules are absurd, their perspectives deceitful.', page: 44, date: '2026-08-21' },
-  { id: 3, bookId: 1, bookTitle: 'The Name of the Rose', type: 'annotation', text: 'The library does not contain books — it contains the memory of books, which is not the same thing at all.', page: 186, date: '2026-08-25' },
-  { id: 4, bookId: 3, bookTitle: 'The Plague', type: 'excerpt', text: "What's true of all the evils in the world is true of plague as well. It helps men to rise above themselves.", page: 308, date: '2026-08-15' },
-  { id: 5, bookId: 7, bookTitle: 'Ficciones', type: 'annotation', text: 'The garden of forking paths — every story branches endlessly, and every branch is equally real.', page: 67, date: '2026-08-10' },
-  { id: 6, bookId: 2, bookTitle: 'Invisible Cities', type: 'annotation', text: 'An invisible city is only visible to those who have ceased looking for it.', page: 89, date: '2026-08-18' },
-  { id: 7, bookId: 6, bookTitle: 'Ways of Seeing', type: 'excerpt', text: 'Seeing comes before words. The child looks and recognizes before it can speak.', page: 7, date: '2026-07-30' },
-  { id: 8, bookId: 4, bookTitle: 'The Master and Margarita', type: 'excerpt', text: 'Cowardice is the greatest sin.', page: 238, date: '2026-07-14' },
-]
+  const clearSearch = () => {
+    setValue('')
+    setHasSearch(false)
+    setIsOpen(false)
+    onSearch('')
+  }
 
-const NOTES: Note[] = [
-  { id: 1, title: 'On reading slowly', date: '2026-08-29', bookTitle: null },
-  { id: 2, title: "Eco's method of world-building", date: '2026-08-26', bookTitle: 'The Name of the Rose' },
-  { id: 3, title: 'Calvino and architecture', date: '2026-08-20', bookTitle: 'Invisible Cities' },
-  { id: 4, title: 'Why I return to Camus', date: '2026-08-14', bookTitle: 'The Plague' },
-  { id: 5, title: 'On annotation as a practice', date: '2026-08-07', bookTitle: null },
-]
+  const submitSearch = () => {
+    const query = value.trim()
+    setHasSearch(query.length > 0)
+    onSearch(query)
+  }
 
-// ─── Heatmap data ─────────────────────────────────────────────────────────────
-function generateHeatmap(): HeatDay[] {
-  const today = new Date(2026, 7, 30)
-  const days: HeatDay[] = []
-  for (let i = 363; i >= 0; i--) {
-    const d = new Date(today)
-    d.setDate(today.getDate() - i)
-    const s = d.getDate() * 17 + (d.getMonth() + 1) * 97 + (d.getFullYear() - 2000) * 31
-    const r1 = ((s * 1103515245 + 12345) >>> 0) / 4294967296
-    const r2 = ((s * 214013 + 2531011) >>> 0) / 4294967296
-    let pages = 0
-    let level: HeatDay['level'] = 0
-    if (r1 > 0.40) {
-      pages = Math.floor(r2 * 72) + 8
-      level = pages <= 20 ? 1 : pages <= 38 ? 2 : pages <= 58 ? 3 : 4
+  const handleBlur = () => {
+    if (value.trim()) {
+      submitSearch()
+      return
     }
-    days.push({ date: d, pages, level })
+    clearSearch()
   }
-  return days
+
+  const handleButtonClick = () => {
+    if (hasSearch) {
+      clearSearch()
+    } else if (isOpen) {
+      submitSearch()
+    } else {
+      openSearch()
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', minWidth: 0, width: '100%' }}>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={event => setValue(event.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={event => {
+          if (event.key === 'Enter') submitSearch()
+          if (event.key === 'Escape') clearSearch()
+        }}
+        aria-label="Search"
+        style={{
+          width: isOpen ? 'min(200px, 60%)' : 0,
+          minWidth: 0,
+          boxSizing: 'border-box',
+          border: 'none',
+          borderBottom: isOpen ? `1px solid ${C.borderMid}` : '1px solid transparent',
+          outline: 'none',
+          background: 'transparent',
+          fontFamily: "'Source Sans 3', sans-serif",
+          fontSize: 12,
+          color: C.fg,
+          padding: isOpen ? '1px 2px 3px' : '1px 0 3px',
+          overflow: 'hidden',
+          transition: 'width 0.22s ease, border-color 0.22s ease, padding 0.22s ease',
+        }}
+      />
+      <button
+        type="button"
+        onMouseDown={event => event.preventDefault()}
+        onClick={handleButtonClick}
+        title={hasSearch ? 'Clear search' : 'Search'}
+        aria-label={hasSearch ? 'Clear search' : 'Search'}
+        style={{
+          width: 25,
+          height: 25,
+          flexShrink: 0,
+          border: 'none',
+          background: 'transparent',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          color: hasSearch ? C.fg : C.muted,
+          padding: 3,
+          borderRadius: 3,
+          transition: 'color 0.15s',
+        }}
+      >
+        {hasSearch ? <SvgX /> : <SvgSearch />}
+      </button>
+    </div>
+  )
 }
 
-function organizeWeeks(days: HeatDay[]): (HeatDay | null)[][] {
-  const result: (HeatDay | null)[][] = []
-  const startDow = days[0].date.getDay()
-  let week: (HeatDay | null)[] = Array(startDow).fill(null)
-  for (const day of days) {
-    week.push(day)
-    if (day.date.getDay() === 6) { result.push(week); week = [] }
-  }
-  if (week.length > 0) {
-    while (week.length < 7) week.push(null)
-    result.push(week)
-  }
-  return result
+function DeleteBookDialog({ book, isDeleting, error, onCancel, onConfirm }: { book: Book; isDeleting: boolean; error: string | null; onCancel: () => void; onConfirm: () => void }) {
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    cancelButtonRef.current?.focus()
+  }, [])
+
+  return (
+    <div
+      role="presentation"
+      onMouseDown={event => { if (event.target === event.currentTarget && !isDeleting) onCancel() }}
+      style={{
+        position: 'fixed',
+        zIndex: 20,
+        inset: 0,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 20,
+        background: 'rgba(47, 42, 39, 0.30)',
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-book-title"
+        style={{
+          width: 'min(360px, 100%)',
+          padding: 20,
+          border: `1px solid ${C.borderMid}`,
+          borderRadius: 4,
+          background: C.card,
+          boxShadow: '0 16px 45px rgba(47,42,39,0.18)',
+        }}
+      >
+        <h2 id="delete-book-title" style={{ margin: 0, color: C.fg, fontFamily: "'Lora', serif", fontSize: 18, fontWeight: 500 }}>
+          Delete book?
+        </h2>
+        <p style={{ margin: '8px 0 0', color: C.muted, fontFamily: "'Source Sans 3', sans-serif", fontSize: 13, lineHeight: 1.5 }}>
+          “{book.title}” and its reading data will be permanently removed.
+        </p>
+        {error && <p role="alert" style={{ margin: '10px 0 0', color: C.danger, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12 }}>{error}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            disabled={isDeleting}
+            onClick={onCancel}
+            style={{ padding: '6px 10px', border: `1px solid ${C.borderMid}`, borderRadius: 3, background: 'transparent', color: C.fg, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12, cursor: isDeleting ? 'wait' : 'pointer' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={isDeleting}
+            onClick={onConfirm}
+            style={{ padding: '6px 10px', border: 'none', borderRadius: 3, background: C.danger, color: C.white, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12, cursor: isDeleting ? 'wait' : 'pointer', opacity: isDeleting ? 0.7 : 1 }}
+          >
+            {isDeleting ? 'Deleting' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
+
+
 
 // ─── Books Panel ──────────────────────────────────────────────────────────────
-function BookCard({ book, onOpen }: { book: Book; onOpen: (bookId: string | number) => void }) {
+function BookCard({ book, onOpen, onDelete }: { book: Book; onOpen: (bookId: string | number) => void; onDelete: (bookId: string | number) => void }) {
   const [hovered, setHovered] = useState(false)
 
   return (
-    <button
-      type="button"
-      aria-label={`Open ${book.title}`}
-      onClick={() => onOpen(book.id)}
+    <div
+      style={{ position: 'relative', borderRadius: 3 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{
-        background: C.card,
-        padding: 0, border: 0, borderRadius: 3,
-        overflow: 'hidden',
-        cursor: 'pointer',
-        transform: hovered ? 'translateY(-2px)' : 'none',
-         boxShadow: hovered ? '0 6px 20px rgba(81,74,69,0.13)' : 'none',
-        transition: 'transform 0.18s ease, box-shadow 0.18s ease',
-      }}
     >
-        <div style={{
-          background: book.color,
-          aspectRatio: '2 / 3',
-          position: 'relative',
-        }}>
-        <div style={{
-          position: 'absolute', inset: 0,
-           backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 7px, rgba(81,74,69,0.025) 7px, rgba(81,74,69,0.025) 8px)',
-          pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute', inset: 0,
-           background: 'linear-gradient(90deg, rgba(81,74,69,0.08) 0%, transparent 12%)',
-          pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 1,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexDirection: 'column', padding: 14, textAlign: 'center', pointerEvents: 'none',
-        }}>
+      <button
+        type="button"
+        aria-label={`Open ${book.title}`}
+        onClick={() => onOpen(book.id)}
+        style={{
+          display: 'block', width: '100%',
+          background: C.card,
+          padding: 0, border: 0, borderRadius: 3,
+          overflow: 'hidden',
+          cursor: 'pointer',
+          transform: hovered ? 'translateY(-2px)' : 'none',
+          boxShadow: hovered ? '0 6px 20px rgba(81,74,69,0.13)' : 'none',
+          transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+        }}
+      >
+        <div style={{ background: book.color, aspectRatio: '2 / 3', position: 'relative' }}>
           <div style={{
-            fontFamily: "'Lora', serif", fontSize: 15, fontWeight: 500,
-            lineHeight: 1.35, color: C.fg,
+            position: 'absolute', inset: 0,
+            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 7px, rgba(81,74,69,0.025) 7px, rgba(81,74,69,0.025) 8px)',
+            pointerEvents: 'none',
+          }} />
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(90deg, rgba(81,74,69,0.08) 0%, transparent 12%)',
+            pointerEvents: 'none',
+          }} />
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexDirection: 'column', padding: 14, textAlign: 'center', pointerEvents: 'none',
+          }}>
+            <div style={{ fontFamily: "'Lora', serif", fontSize: 15, fontWeight: 500, lineHeight: 1.35, color: C.fg }}>
+              {book.title}
+            </div>
+            <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 11, lineHeight: 1.35, color: C.muted, marginTop: 6 }}>
+              {book.author}
+            </div>
+          </div>
+          {book.progress > 0 && book.progress < 100 && (
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(81,74,69,0.12)' }}>
+              <div style={{ width: `${book.progress}%`, height: '100%', background: 'rgba(81,74,69,0.28)' }} />
+            </div>
+          )}
+        </div>
+      </button>
+
+      <button
+        type="button"
+        aria-label={`Delete ${book.title}`}
+        onClick={e => { e.stopPropagation(); onDelete(book.id) }}
+        style={{
+          position: 'absolute', top: 6, right: 6,
+          width: 22, height: 22, borderRadius: '50%',
+          border: 'none',
+          background: 'rgba(246,243,239,0.82)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', zIndex: 3,
+          color: C.danger,
+          opacity: hovered ? 1 : 0,
+          pointerEvents: hovered ? 'auto' : 'none',
+          transition: 'opacity 0.15s',
+        }}
+      >
+        <SvgTrash />
+      </button>
+    </div>
+  )
+}
+
+function BookListRow({ book, onOpen, onDelete }: { book: Book; onOpen: (bookId: string | number) => void; onDelete: (bookId: string | number) => void }) {
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 12px', minHeight: 74,
+        background: hovered ? 'rgba(81,74,69,0.03)' : 'transparent',
+        borderBottom: `1px solid ${C.border}`,
+        transition: 'background 0.1s',
+        position: 'relative',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <button
+        type="button"
+        aria-label={`Open ${book.title}`}
+        onClick={() => onOpen(book.id)}
+        style={{
+          display: 'flex', flex: 1, alignItems: 'center', gap: 12, minWidth: 0,
+          border: 0, background: 'transparent', textAlign: 'left', font: 'inherit',
+          cursor: 'pointer', padding: 0,
+        }}
+      >
+        <div style={{
+          width: 36, height: 52, flexShrink: 0,
+          background: book.color, borderRadius: 2,
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 7px, rgba(81,74,69,0.025) 7px, rgba(81,74,69,0.025) 8px)',
+        }} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            fontFamily: "'Lora', serif", fontSize: 14, fontWeight: 500,
+            color: C.fg, lineHeight: 1.35,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {book.title}
           </div>
-          <div style={{
-            fontFamily: "'Source Sans 3', sans-serif", fontSize: 11,
-            lineHeight: 1.35, color: C.muted, marginTop: 6,
-          }}>
+          <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 11, color: C.muted, marginTop: 3 }}>
             {book.author}
           </div>
         </div>
         {book.progress > 0 && book.progress < 100 && (
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(81,74,69,0.12)' }}>
+          <div style={{ width: 56, height: 3, background: 'rgba(81,74,69,0.12)', flexShrink: 0 }}>
             <div style={{ width: `${book.progress}%`, height: '100%', background: 'rgba(81,74,69,0.28)' }} />
           </div>
         )}
-      </div>
-    </button>
+      </button>
+
+      <button
+        type="button"
+        aria-label={`Delete ${book.title}`}
+        onClick={() => onDelete(book.id)}
+        style={{
+          flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+          border: 'none', background: 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: C.danger,
+          opacity: hovered ? 1 : 0,
+          pointerEvents: hovered ? 'auto' : 'none',
+          transition: 'opacity 0.15s',
+        }}
+      >
+        <SvgTrash />
+      </button>
+    </div>
   )
 }
 
-function BookListRow({ book, onOpen }: { book: Book; onOpen: (bookId: string | number) => void }) {
-  const [hovered, setHovered] = useState(false)
-
-  return (
-    <button
-      type="button"
-      aria-label={`Open ${book.title}`}
-      onClick={() => onOpen(book.id)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', width: '100%', border: 0, textAlign: 'left', font: 'inherit', alignItems: 'center', gap: 12,
-        padding: '10px 12px', minHeight: 74,
-        background: hovered ? 'rgba(81,74,69,0.03)' : 'transparent',
-        borderBottom: `1px solid ${C.border}`,
-        cursor: 'pointer', transition: 'background 0.1s',
-      }}
-    >
-      <div style={{
-        width: 36, height: 52, flexShrink: 0,
-        background: book.color, borderRadius: 2,
-        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 7px, rgba(81,74,69,0.025) 7px, rgba(81,74,69,0.025) 8px)',
-      }} />
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{
-          fontFamily: "'Lora', serif", fontSize: 14, fontWeight: 500,
-          color: C.fg, lineHeight: 1.35,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {book.title}
-        </div>
-        <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 11, color: C.muted, marginTop: 3 }}>
-          {book.author}
-        </div>
-      </div>
-      {book.progress > 0 && book.progress < 100 && (
-        <div style={{ width: 56, height: 3, background: 'rgba(81,74,69,0.12)', flexShrink: 0 }}>
-          <div style={{ width: `${book.progress}%`, height: '100%', background: 'rgba(81,74,69,0.28)' }} />
-        </div>
-      )}
-    </button>
-  )
-}
-
-function BooksPanel({ books, loading, onBookImported, onOpenBook }: { books: Book[]; loading: boolean; onBookImported: (file: File) => Promise<void>; onOpenBook: (bookId: string | number) => void }) {
+function BooksPanel({ books, loading, onBookImported, onOpenBook, onDeleteBook }: { books: Book[]; loading: boolean; onBookImported: (file: File) => Promise<void>; onOpenBook: (bookId: string | number) => void; onDeleteBook: (bookId: string | number) => Promise<void> }) {
   const [view, setView] = useState<'shelf' | 'list'>('shelf')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [bookPendingDelete, setBookPendingDelete] = useState<Book | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const views: { id: 'shelf' | 'list'; label: string }[] = [
     { id: 'shelf', label: 'Shelf' },
@@ -261,6 +418,27 @@ function BooksPanel({ books, loading, onBookImported, onOpenBook }: { books: Boo
       setUploadError(error instanceof Error ? error.message : '书籍上传失败')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const requestDelete = (bookId: string | number) => {
+    const book = books.find(item => item.id === bookId)
+    if (!book) return
+    setDeleteError(null)
+    setBookPendingDelete(book)
+  }
+
+  const confirmDelete = async () => {
+    if (!bookPendingDelete) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await onDeleteBook(bookPendingDelete.id)
+      setBookPendingDelete(null)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Unable to delete this book.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -305,12 +483,13 @@ function BooksPanel({ books, loading, onBookImported, onOpenBook }: { books: Boo
            flex: 1, overflow: 'auto',
            padding: '16px 24px',
            display: 'grid',
-           gridTemplateColumns: 'repeat(4, 1fr)',
+           gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 198px))',
            gap: 14,
            alignContent: 'start',
+           justifyContent: 'start',
          }}>
            {books.map(book => (
-             <BookCard key={book.id} book={book} onOpen={onOpenBook} />
+             <BookCard key={book.id} book={book} onOpen={onOpenBook} onDelete={requestDelete} />
            ))}
            <button
              type="button"
@@ -355,18 +534,28 @@ function BooksPanel({ books, loading, onBookImported, onOpenBook }: { books: Boo
        ) : (
          <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
            {books.map(book => (
-             <BookListRow key={book.id} book={book} onOpen={onOpenBook} />
+             <BookListRow key={book.id} book={book} onOpen={onOpenBook} onDelete={requestDelete} />
            ))}
          </div>
        )}
+      {bookPendingDelete && (
+        <DeleteBookDialog
+          book={bookPendingDelete}
+          isDeleting={deleting}
+          error={deleteError}
+          onCancel={() => { if (!deleting) setBookPendingDelete(null) }}
+          onConfirm={() => { void confirmDelete() }}
+        />
+      )}
     </div>
   )
 }
 
 // ─── Annotations / Excerpts Panel ─────────────────────────────────────────────
-function AnnotationsPanel({ entries, loading }: { entries: Entry[]; loading: boolean }) {
+function AnnotationsPanel({ entries }: { entries: Entry[] }) {
   const [tab, setTab] = useState<'annotation' | 'excerpt'>('annotation')
   const [bookFilter, setBookFilter] = useState<string | number | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const booksForTab = useMemo(() => {
     const seen = new Set<string | number>()
@@ -377,7 +566,9 @@ function AnnotationsPanel({ entries, loading }: { entries: Entry[]; loading: boo
   }, [tab])
 
   const filtered = entries.filter(
-    e => e.type === tab && (bookFilter === null || e.bookId === bookFilter)
+    e => e.type === tab &&
+    (bookFilter === null || e.bookId === bookFilter) &&
+    (searchQuery === '' || e.text.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   const truncate = (s: string, n: number) => s.length > n ? s.slice(0, n) + '…' : s
@@ -388,11 +579,8 @@ function AnnotationsPanel({ entries, loading }: { entries: Entry[]; loading: boo
       overflow: 'hidden', minHeight: 0,
       background: C.annotationsBg,
     }}>
-      <div style={{
-        padding: '16px 20px 11px',
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '16px 20px 11px', flexShrink: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', alignItems: 'center', columnGap: 12 }}>
           <div style={{ display: 'flex', gap: 18 }}>
             {(['annotation', 'excerpt'] as const).map(t => (
               <button
@@ -412,6 +600,8 @@ function AnnotationsPanel({ entries, loading }: { entries: Entry[]; loading: boo
               </button>
             ))}
           </div>
+
+          <PanelSearch onSearch={setSearchQuery} />
         </div>
         <div style={{ display: 'flex', gap: 5, marginTop: 9, flexWrap: 'wrap' }}>
           <button
@@ -485,24 +675,32 @@ function AnnotationsPanel({ entries, loading }: { entries: Entry[]; loading: boo
 
 // ─── Notes Panel ─────────────────────────────────────────────────────────────
 function NotesPanel({ notes }: { notes: Note[] }) {
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filtered = notes.filter(
+    n => searchQuery === '' || n.title.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, background: C.notesBg }}>
       <div style={{
         padding: '14px 20px 12px',
-        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', alignItems: 'center', columnGap: 12,
         flexShrink: 0,
       }}>
         <h2 style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 500, color: C.fg, margin: 0 }}>
           Notes
         </h2>
+
+        <PanelSearch onSearch={setSearchQuery} />
       </div>
 
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {notes.length === 0 ? (
+        {filtered.length === 0 ? (
           <div style={{ padding: '18px 20px', color: C.muted, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12 }}>
-            No notes available from the API yet.
+            {searchQuery ? 'No notes match your search.' : 'No notes yet.'}
           </div>
-        ) : notes.map(n => (
+        ) : filtered.map(n => (
           <div
             key={n.id}
             style={{
@@ -547,185 +745,6 @@ function NotesPanel({ notes }: { notes: Note[] }) {
 }
 
 // ─── "更多" Overlay ───────────────────────────────────────────────────────────
-const MINI = 9
-const MINI_GAP = 2
-const MINI_STEP = MINI + MINI_GAP
-const MINI_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function MoreOverlay({ onClose, user, onNavigate }: { onClose: () => void; user: ApiUser | null; onNavigate: (path: string) => void }) {
-  const allDays = useMemo(() => generateHeatmap(), [])
-
-  // Last 26 weeks for compact display
-  const weeks = useMemo(() => organizeWeeks(allDays.slice(-182)), [allDays])
-
-  const monthLabels = useMemo(() => {
-    const labels: { col: number; name: string }[] = []
-    let lastMonth = -1
-    weeks.forEach((week, col) => {
-      for (const day of week) {
-        if (day && day.date.getMonth() !== lastMonth) {
-          lastMonth = day.date.getMonth()
-          labels.push({ col, name: MINI_MONTHS[lastMonth] })
-          break
-        }
-      }
-    })
-    return labels
-  }, [weeks])
-
-  const stats = useMemo(() => {
-    const thisYear = allDays.filter(d => d.pages > 0 && d.date.getFullYear() === 2026)
-    let streak = 0
-    for (let i = allDays.length - 1; i >= 0; i--) {
-      if (allDays[i].pages > 0) streak++
-      else break
-    }
-    const aug = allDays.filter(d => d.pages > 0 && d.date.getMonth() === 7 && d.date.getFullYear() === 2026)
-    const avgPages = aug.length > 0 ? Math.round(aug.reduce((s, d) => s + d.pages, 0) / aug.length) : 0
-    return { daysRead: thisYear.length, streak, avgPages }
-  }, [allDays])
-
-  const settingsItems = [
-    { label: 'Appearance', sub: 'Theme & display' },
-    { label: 'Export data', sub: 'Backup your library' },
-    { label: 'Notifications', sub: 'Reading reminders' },
-  ]
-
-  return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0,
-           background: 'rgba(81,74,69,0.08)',
-          zIndex: 40,
-          backdropFilter: 'blur(0.5px)',
-        }}
-      />
-
-      {/* Panel */}
-      <div style={{
-        position: 'fixed', bottom: 56, right: 20,
-        width: 340, zIndex: 50,
-        background: C.bg,
-        borderRadius: 8,
-         boxShadow: '0 8px 40px rgba(81,74,69,0.18), 0 0 0 1px rgba(81,74,69,0.10)',
-        overflow: 'hidden',
-      }}>
-        {/* Account */}
-        <div style={{
-          padding: '16px 20px',
-          borderBottom: `1px solid ${C.border}`,
-          display: 'flex', alignItems: 'center', gap: 12,
-        }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: '50%',
-             background: C.sidebar, flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: "'Source Sans 3', sans-serif",
-             fontSize: 14, fontWeight: 600, color: C.bg,
-          }}>
-            {(user?.display_name || user?.email || '?').slice(0, 1).toUpperCase()}
-          </div>
-          <div>
-            <div style={{ fontFamily: "'Lora', serif", fontSize: 14, fontWeight: 500, color: C.fg }}>
-              {user?.display_name || 'Reader'}
-            </div>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9.5, color: C.muted, marginTop: 2, letterSpacing: '0.03em' }}>
-              {user?.email || '—'}
-            </div>
-          </div>
-        </div>
-
-        {/* Reading Activity */}
-        <div style={{ padding: '14px 20px 16px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-            <div style={{ fontFamily: "'Lora', serif", fontSize: 13, fontWeight: 500, color: C.fg }}>
-              Reading Activity
-            </div>
-            <div style={{ display: 'flex', gap: 20 }}>
-              {[
-                { v: stats.daysRead, l: 'days' },
-                { v: stats.streak, l: 'streak' },
-                { v: stats.avgPages, l: 'pg/day' },
-              ].map(s => (
-                <div key={s.l} style={{ textAlign: 'right' }}>
-                  <span style={{ fontFamily: "'Lora', serif", fontSize: 15, fontWeight: 500, color: C.fg }}>{s.v}</span>
-                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 8, color: C.muted, marginLeft: 3, letterSpacing: '0.04em' }}>{s.l}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Month labels */}
-          <div style={{ position: 'relative', height: 13, marginBottom: 2 }}>
-            {monthLabels.map((m, i) => (
-              <span key={i} style={{
-                position: 'absolute', left: m.col * MINI_STEP,
-                fontFamily: "'DM Mono', monospace", fontSize: 8.5,
-                color: C.muted, letterSpacing: '0.03em', whiteSpace: 'nowrap',
-              }}>
-                {m.name}
-              </span>
-            ))}
-          </div>
-
-          {/* Heatmap grid */}
-          <div style={{ display: 'flex', gap: MINI_GAP }}>
-            {weeks.map((week, wi) => (
-              <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: MINI_GAP }}>
-                {week.map((day, di) => (
-                  <div
-                    key={di}
-                    title={day ? `${day.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: ${day.pages} pages` : ''}
-                    style={{
-                      width: MINI, height: MINI, borderRadius: 1.5,
-                      background: day ? C.heat[day.level] : 'transparent',
-                      flexShrink: 0,
-                    }}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Settings items */}
-        <div style={{ padding: '6px 0' }}>
-          {settingsItems.map(item => (
-            <button
-              key={item.label}
-              onClick={() => item.label === 'Appearance' && onNavigate('/settings')}
-              style={{
-                padding: '9px 20px', cursor: 'pointer',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                transition: 'background 0.1s',
-                width: '100%', border: 'none', textAlign: 'left', background: 'transparent',
-              }}
-               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(81,74,69,0.04)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div>
-                <div style={{ fontFamily: "'Source Sans 3', sans-serif", fontSize: 13, color: C.fg }}>
-                  {item.label}
-                </div>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: C.muted, letterSpacing: '0.03em', marginTop: 1 }}>
-                  {item.sub}
-                </div>
-              </div>
-              <div style={{ color: C.muted, opacity: 0.6 }}>
-                <SvgChevronRight />
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ─── "更多" floating button ───────────────────────────────────────────────────
 function MoreButton({ onClick }: { onClick: () => void }) {
   const [hovered, setHovered] = useState(false)
   return (
@@ -787,11 +806,11 @@ function LandingCover({ onNavigate }: { onNavigate: (path: string) => void }) {
 
   return (
     <div className="landing-scroll" ref={scrollRoot}>
-      <section className="cover-page" aria-label="Intertext introduction">
+      <section className="cover-page" aria-label="Library introduction">
         <div className="cover-topline">VOLUME I: THE DIALOGUE</div>
 
         <div className="cover-center">
-          <h1 className="cover-title cover-animate cover-animate-title">Intertext</h1>
+          <h1 className="cover-title cover-animate cover-animate-title">Library</h1>
           <div className="cover-chapter cover-animate cover-animate-chapter">
             <span />
             <span>CHAPTER 14 — INTENTION</span>
@@ -808,7 +827,7 @@ function LandingCover({ onNavigate }: { onNavigate: (path: string) => void }) {
           </div>
         </div>
 
-        <div className="cover-year">INTERTEXT / 2026</div>
+        <div className="cover-year">LIBRARY / 2026</div>
         <div className={`cover-scroll-hint ${checkingSession ? 'is-checking' : ''}`}>
           <span>{checkingSession ? 'CHECKING SESSION' : 'SCROLL TO ENTER'}</span>
           <i aria-hidden="true" />
@@ -821,12 +840,18 @@ function LandingCover({ onNavigate }: { onNavigate: (path: string) => void }) {
 
 // ─── App root ─────────────────────────────────────────────────────────────────
 function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
-  const [user, setUser] = useState<ApiUser | null>(null)
   const [books, setBooks] = useState<Book[]>([])
   const [entries, setEntries] = useState<Entry[]>([])
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const handleDeleteBook = async (bookId: string | number) => {
+    await api.deleteBook(bookId)
+    setBooks(current => current.filter(b => b.id !== bookId))
+    setEntries(current => current.filter(e => e.bookId !== bookId))
+    setNotes(current => current.filter(n => n.bookId !== bookId))
+  }
 
   const handleBookImported = async (file: File) => {
     const imported = await api.importBook(file)
@@ -835,7 +860,6 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
       id: imported.id,
       title: imported.title,
       author: format,
-      genre: format,
       color: C.bookCovers[current.length % C.bookCovers.length],
       status: 'to-read',
       progress: 0,
@@ -846,7 +870,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     let cancelled = false
     async function load() {
       try {
-        const currentUser = await api.me()
+        await api.me()
         const apiBooks = await api.listBooks()
         const chapters = await Promise.all(apiBooks.map(book => api.listChapters(book.id)))
         const progress = await Promise.all(apiBooks.map(book => api.getProgress(book.id)))
@@ -858,7 +882,6 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         if (cancelled) return
         const chapterCounts = new Map(apiBooks.map((book, index) => [book.id, chapters[index].length]))
         const chapterIndexes = new Map(chapters.flat().map(chapter => [chapter.id, chapter.chapter_index]))
-        setUser(currentUser)
         setBooks(apiBooks.map((book, index) => {
           const total = chapterCounts.get(book.id) || 0
           const current = progress[index]?.chapter_id ? (chapterIndexes.get(progress[index]!.chapter_id!) ?? 0) + 1 : 0
@@ -866,7 +889,6 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
             id: book.id,
             title: book.title,
             author: book.author || book.import_file.file_format.toUpperCase(),
-            genre: book.import_file.file_format.toUpperCase(),
             color: C.bookCovers[index % 5],
             status: current === 0 ? 'to-read' : total > 0 && current >= total ? 'read' : 'reading',
             progress: total > 0 ? Math.round((current / total) * 100) : 0,
@@ -897,6 +919,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
           title: note.title,
           date: note.updated_at.slice(0, 10),
           bookTitle: apiBooks[bookIndex].title,
+          bookId: apiBooks[bookIndex].id,
         }))))
       } catch (loadError) {
         if (!cancelled) setError(isUnauthorized(loadError) ? '请先在后端建立会话后再访问书架。' : (loadError as Error).message)
@@ -920,12 +943,12 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     }}>
       {/* Left: Library (full height) */}
       <div style={{ overflow: 'hidden' }}>
-        <BooksPanel books={books} loading={loading} onBookImported={handleBookImported} onOpenBook={bookId => onNavigate(`/paratext?bookId=${encodeURIComponent(String(bookId))}`)} />
+        <BooksPanel books={books} loading={loading} onBookImported={handleBookImported} onOpenBook={bookId => onNavigate(`/paratext?bookId=${encodeURIComponent(String(bookId))}`)} onDeleteBook={handleDeleteBook} />
       </div>
 
       {/* Right: Annotations (top) + Notes (bottom) */}
       <div style={{ display: 'grid', gridTemplateRows: '6fr 4fr', rowGap: 12, padding: '12px 12px 12px 0', overflow: 'hidden' }}>
-        <AnnotationsPanel entries={entries} loading={loading} />
+        <AnnotationsPanel entries={entries} />
         <NotesPanel notes={notes} />
       </div>
 
