@@ -97,12 +97,28 @@ def get_progress(book_id: str, db: DbSession = Depends(get_db), user: User = Dep
 @router.put("/{book_id}/progress", response_model=ReadingProgressResponse)
 def save_progress(book_id: str, payload: ReadingProgressRequest, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> ReadingProgress:
     book = _book(db, book_id, user)
-    chapter = _chapter(db, book.id, payload.chapter_id)
+    chapter = _chapter(db, book.id, payload.last_read_chapter_id)
     progress = db.scalar(select(ReadingProgress).where(ReadingProgress.book_id == book.id, ReadingProgress.user_id == user.id))
     if progress is None:
-        progress = ReadingProgress(user_id=user.id, book_id=book.id)
+        progress = ReadingProgress(
+            user_id=user.id,
+            book_id=book.id,
+            last_read_chapter_id=chapter.id,
+            furthest_read_chapter_id=chapter.id,
+        )
         db.add(progress)
-    progress.chapter_id = chapter.id
+    else:
+        progress.last_read_chapter_id = chapter.id
+        furthest_chapter = None
+        if progress.furthest_read_chapter_id:
+            furthest_chapter = db.scalar(
+                select(Chapter).where(
+                    Chapter.id == progress.furthest_read_chapter_id,
+                    Chapter.book_id == book.id,
+                )
+            )
+        if furthest_chapter is None or chapter.chapter_index > furthest_chapter.chapter_index:
+            progress.furthest_read_chapter_id = chapter.id
     db.commit()
     db.refresh(progress)
     return progress

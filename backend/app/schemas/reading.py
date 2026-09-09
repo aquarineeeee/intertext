@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ReadingProgressRequest(BaseModel):
-    chapter_id: str = Field(min_length=1, max_length=36)
+    last_read_chapter_id: str = Field(min_length=1, max_length=36)
 
 
 class ReadingProgressResponse(BaseModel):
@@ -12,7 +12,8 @@ class ReadingProgressResponse(BaseModel):
 
     id: str
     book_id: str
-    chapter_id: str | None
+    last_read_chapter_id: str | None
+    furthest_read_chapter_id: str | None
     updated_at: datetime
 
 

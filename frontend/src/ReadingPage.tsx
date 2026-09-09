@@ -366,7 +366,7 @@ export default function App() {
           api.listExcerpts(selected.id),
           api.listConversations(selected.id),
         ])
-        const selectedChapterId = requestedChapterId || progressRecord?.chapter_id || bookChapters[0]?.id
+        const selectedChapterId = requestedChapterId || progressRecord?.last_read_chapter_id || bookChapters[0]?.id
         if (!selectedChapterId) throw new Error('这本书还没有可读章节。')
         const chapter = await api.getChapter(selected.id, selectedChapterId)
         const split = splitChapterText(chapter.text)

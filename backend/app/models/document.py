@@ -56,12 +56,14 @@ class ReadingProgress(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     book_id: Mapped[str] = mapped_column(String(36), ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
-    chapter_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    last_read_chapter_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    furthest_read_chapter_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("User", back_populates="reading_progress")
     book = relationship("Book", back_populates="reading_progress")
-    chapter = relationship("Chapter")
+    last_read_chapter = relationship("Chapter", foreign_keys=[last_read_chapter_id])
+    furthest_read_chapter = relationship("Chapter", foreign_keys=[furthest_read_chapter_id])
 
 
 class Annotation(Base):

@@ -50,7 +50,8 @@ function bookError(error: unknown): string {
 export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) {
   const [book, setBook] = useState<ApiBook | null>(null)
   const [chapters, setChapters] = useState<ApiChapter[]>([])
-  const [progressChapterId, setProgressChapterId] = useState<string | null>(null)
+  const [lastReadChapterId, setLastReadChapterId] = useState<string | null>(null)
+  const [furthestReadChapterId, setFurthestReadChapterId] = useState<string | null>(null)
   const [annotations, setAnnotations] = useState<ApiAnnotation[]>([])
   const [excerpts, setExcerpts] = useState<ApiExcerpt[]>([])
   const [notes, setNotes] = useState<ApiNote[]>([])
@@ -78,7 +79,8 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
         if (cancelled) return
         setBook(selected)
         setChapters(bookChapters)
-        setProgressChapterId(progress?.chapter_id || null)
+        setLastReadChapterId(progress?.last_read_chapter_id || null)
+        setFurthestReadChapterId(progress?.furthest_read_chapter_id || null)
         setAnnotations(bookAnnotations)
         setExcerpts(bookExcerpts)
         setNotes(bookNotes)
@@ -105,7 +107,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
   } as CSSProperties
 
   const chapterById = useMemo(() => new Map(chapters.map(chapter => [chapter.id, chapter])), [chapters])
-  const currentChapterIndex = progressChapterId ? (chapterById.get(progressChapterId)?.chapter_index ?? 0) : -1
+  const currentChapterIndex = furthestReadChapterId ? (chapterById.get(furthestReadChapterId)?.chapter_index ?? 0) : -1
   const progressPercent = chapters.length && currentChapterIndex >= 0
     ? Math.round(((currentChapterIndex + 1) / chapters.length) * 100)
     : 0
@@ -178,7 +180,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
               <div className="paratext-progress-block">
                 <div className="paratext-progress-label"><span>Reading progress</span><strong>{progressPercent}%{currentChapterIndex >= 0 ? ` (Ch. ${currentChapterIndex + 1})` : ''}</strong></div>
                 <div className="paratext-progress-track"><span style={{ width: `${progressPercent}%` }} /></div>
-                <button type="button" className="paratext-continue" onClick={() => onNavigate(readPath(progressChapterId || chapters[0]?.id))}>
+                <button type="button" className="paratext-continue" onClick={() => onNavigate(readPath(lastReadChapterId || chapters[0]?.id))}>
                   Continue reading <span aria-hidden="true">&rarr;</span>
                 </button>
               </div>
@@ -198,7 +200,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
             </div>
             <div className="paratext-chapter-list">
               {chapters.map(chapter => (
-                <button type="button" className={`paratext-chapter${chapter.id === progressChapterId ? ' is-current' : ''}`} key={chapter.id} onClick={() => onNavigate(readPath(chapter.id))}>
+                <button type="button" className={`paratext-chapter${chapter.id === lastReadChapterId ? ' is-current' : ''}`} key={chapter.id} onClick={() => onNavigate(readPath(chapter.id))}>
                   <span className="paratext-chapter-number">{String(chapter.chapter_index + 1).padStart(2, '0')}.</span>
                   <span className="paratext-chapter-title">{chapter.title || `Chapter ${chapter.chapter_index + 1}`}</span>
                   <span className="paratext-chapter-page">{chapter.text_length.toLocaleString()} chars</span>

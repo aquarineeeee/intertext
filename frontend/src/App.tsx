@@ -884,7 +884,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         const chapterIndexes = new Map(chapters.flat().map(chapter => [chapter.id, chapter.chapter_index]))
         setBooks(apiBooks.map((book, index) => {
           const total = chapterCounts.get(book.id) || 0
-          const current = progress[index]?.chapter_id ? (chapterIndexes.get(progress[index]!.chapter_id!) ?? 0) + 1 : 0
+          const current = progress[index]?.furthest_read_chapter_id ? (chapterIndexes.get(progress[index]!.furthest_read_chapter_id!) ?? 0) + 1 : 0
           return {
             id: book.id,
             title: book.title,

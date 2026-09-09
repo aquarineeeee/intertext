@@ -40,7 +40,8 @@ export type ApiChapterContent = ApiChapter & {
 export type ApiProgress = {
   id: string
   book_id: string
-  chapter_id: string | null
+  last_read_chapter_id: string | null
+  furthest_read_chapter_id: string | null
   updated_at: string
 } | null
 
@@ -195,7 +196,7 @@ export const api = {
   listChapters: (bookId: string) => request<ApiChapter[]>(`/books/${bookId}/chapters`),
   getChapter: (bookId: string, chapterId: string) => request<ApiChapterContent>(`/books/${bookId}/chapters/${chapterId}`),
   getProgress: (bookId: string) => request<ApiProgress>(`/books/${bookId}/progress`),
-  saveProgress: (bookId: string, chapterId: string) => request<NonNullable<ApiProgress>>(`/books/${bookId}/progress`, { method: 'PUT', body: JSON.stringify({ chapter_id: chapterId }) }),
+  saveProgress: (bookId: string, lastReadChapterId: string) => request<NonNullable<ApiProgress>>(`/books/${bookId}/progress`, { method: 'PUT', body: JSON.stringify({ last_read_chapter_id: lastReadChapterId }) }),
   listAnnotations: (bookId: string) => request<ApiAnnotation[]>(`/books/${bookId}/annotations`),
   createAnnotation: (bookId: string, annotation: { chapter_id: string; start_offset: number; end_offset: number; selected_text: string; note_content?: string; color?: string }) =>
     request<ApiAnnotation>(`/books/${bookId}/annotations`, { method: 'POST', body: JSON.stringify(annotation) }),

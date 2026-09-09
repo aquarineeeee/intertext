@@ -74,7 +74,7 @@ def _export_user(db: DbSession, user: User) -> dict:
             **_row(book, ("id", "title", "author", "description", "status", "parse_error", "created_at", "updated_at")),
             "import_files": imports,
             "chapters": chapter_rows,
-            "progress": _row(progress, ("id", "chapter_id", "updated_at")) if progress else None,
+            "progress": _row(progress, ("id", "last_read_chapter_id", "furthest_read_chapter_id", "updated_at")) if progress else None,
             "annotations": [_row(annotation, ("id", "chapter_id", "start_offset", "end_offset", "selected_text", "note_content", "color", "status", "location_error", "created_at", "updated_at")) for annotation in annotations],
             "excerpts": [_row(excerpt, ("id", "chapter_id", "start_offset", "end_offset", "selected_text", "created_at", "updated_at")) for excerpt in excerpts],
             "notes": [_row(note, ("id", "title", "content", "created_at", "updated_at")) for note in notes],
@@ -202,7 +202,9 @@ def _import_data(db: DbSession, user: User, payload: dict) -> dict:
                 if isinstance(raw_progress, dict):
                     progress = db.scalar(select(ReadingProgress).where(ReadingProgress.user_id == user.id, ReadingProgress.book_id == target_book_id))
                     if progress is None:
-                        db.add(ReadingProgress(id=_new_id(raw_progress.get("id"), db, ReadingProgress), user_id=user.id, book_id=target_book_id, chapter_id=chapter_map.get(str(raw_progress.get("chapter_id")))))
+                        last_read_chapter_id = chapter_map.get(str(raw_progress.get("last_read_chapter_id", raw_progress.get("chapter_id"))))
+                        furthest_read_chapter_id = chapter_map.get(str(raw_progress.get("furthest_read_chapter_id", raw_progress.get("last_read_chapter_id", raw_progress.get("chapter_id")))))
+                        db.add(ReadingProgress(id=_new_id(raw_progress.get("id"), db, ReadingProgress), user_id=user.id, book_id=target_book_id, last_read_chapter_id=last_read_chapter_id, furthest_read_chapter_id=furthest_read_chapter_id))
             for raw_annotation in raw_book.get("annotations", []):
                 if not isinstance(raw_annotation, dict):
                     continue
