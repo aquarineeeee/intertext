@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage } from './api'
 import { palette } from './theme'
 import './ReadingPage.css'
@@ -505,7 +505,7 @@ export default function App() {
 
   // ── Connector line ─────────────────────────────────────────────────────────
 
-  useEffect(() => {
+  const refreshConnector = useCallback(() => {
     if (!hoveredId) { setConnector(null); return }
     const hl = document.querySelector(`[data-annotation-id="${hoveredId}"][data-highlight]`)
     const ae = document.querySelector(`[data-annotation-entry="${hoveredId}"]`)
@@ -516,6 +516,32 @@ export default function App() {
     const clr: Record<AnnType, string> = { bookmark: palette.accent, annotation: palette.fg, discussion: palette.sidebar }
     setConnector({ x1: hr.right, y1: (hr.top + hr.bottom) / 2, x2: ar.left, y2: (ar.top + ar.bottom) / 2, color: ann ? clr[ann.type] : palette.accent })
   }, [hoveredId, annotations])
+
+  useLayoutEffect(() => {
+    refreshConnector()
+  }, [refreshConnector, annotationScrollTop, annotationWidth, fontSize, lineHeight, paragraphs])
+
+  useEffect(() => {
+    const readingArea = document.querySelector('.reading-area')
+    const annotationPanel = annotationPanelRef.current
+    let frame = 0
+    const scheduleRefresh = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        refreshConnector()
+      })
+    }
+    readingArea?.addEventListener('scroll', scheduleRefresh, { passive: true })
+    annotationPanel?.addEventListener('scroll', scheduleRefresh, { passive: true })
+    window.addEventListener('resize', scheduleRefresh)
+    return () => {
+      readingArea?.removeEventListener('scroll', scheduleRefresh)
+      annotationPanel?.removeEventListener('scroll', scheduleRefresh)
+      window.removeEventListener('resize', scheduleRefresh)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [refreshConnector])
 
   // ── Text selection ─────────────────────────────────────────────────────────
 
@@ -677,9 +703,21 @@ export default function App() {
   }
 
   const scrollToEntry = (id: string) => {
-    const el = document.querySelector(`[data-annotation-entry="${id}"]`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    setTimeout(() => flashEl(`[data-annotation-entry="${id}"]`, 'flash-entry'), 300)
+    const panel = annotationPanelRef.current
+    const el = panel?.querySelector<HTMLElement>(`[data-annotation-entry="${id}"]`)
+    if (panel && el) {
+      const panelRect = panel.getBoundingClientRect()
+      const entryRect = el.getBoundingClientRect()
+      const targetTop = panel.scrollTop + entryRect.top - panelRect.top - (panel.clientHeight - entryRect.height) / 2
+      const maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight)
+      panel.scrollTo({ top: Math.max(0, Math.min(maxTop, targetTop)), behavior: 'smooth' })
+    } else {
+      document.querySelector(`[data-annotation-entry="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+    window.setTimeout(() => {
+      refreshConnector()
+      flashEl(`[data-annotation-entry="${id}"]`, 'flash-entry')
+    }, 350)
   }
 
   const scrollToHighlight = (id: string) => {
