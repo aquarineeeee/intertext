@@ -175,12 +175,6 @@ function renderParagraph(
 
 // ─── AnnotationEntry ──────────────────────────────────────────────────────────
 
-const TYPE_COLOR: Record<AnnType, string> = {
-  bookmark:   'var(--color-amber)',
-  annotation: 'var(--color-umber)',
-  discussion: 'var(--color-slate)',
-}
-
 const COLLAPSE_AT = 4
 
 interface AEProps {
@@ -206,7 +200,6 @@ function AnnotationEntry({ ann, onHover, onToHighlight, onToggle, replyVal, onRe
   return (
     <div
       data-annotation-entry={ann.id}
-      style={{ paddingLeft: '12px', borderLeft: `2px solid ${TYPE_COLOR[ann.type]}` }}
       onMouseEnter={() => onHover(ann.id)}
       onMouseLeave={() => onHover(null)}
     >
@@ -575,6 +568,22 @@ export default function App() {
     }
   }
 
+  const cancelPending = () => {
+    setPending(null)
+    setPendingSelection(null)
+    setPendingType(null)
+    setNoteVal('')
+    setSel(null)
+    window.getSelection()?.removeAllRanges()
+  }
+
+  const handlePageClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!pending) return
+    const target = event.target as Element
+    if (target.closest('[data-no-select], [data-highlight], [data-annotation-entry], button, input, textarea')) return
+    cancelPending()
+  }
+
   // ── Note submit ────────────────────────────────────────────────────────────
 
   const handleNoteSubmit = () => {
@@ -723,7 +732,7 @@ export default function App() {
   if (loadError || !book || !chapterId) return <div className="reading-page-root h-full flex items-center justify-center bg-cream" style={readingVars}>{loadError || '暂无可阅读内容。'}</div>
 
   return (
-    <div className="reading-page-root h-full flex flex-col bg-cream" style={readingVars}>
+    <div className="reading-page-root h-full flex flex-col bg-cream" style={readingVars} onClick={handlePageClick}>
 
       {notice && (
         <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 px-3 py-2 text-xs text-ink bg-surface" style={{ fontFamily: 'var(--font-ui)', border: '1px solid var(--color-rule)' }}>
@@ -829,13 +838,13 @@ export default function App() {
                   onChange={e => setNoteVal(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && noteVal.trim()) handleNoteSubmit()
-                    if (e.key === 'Escape') { setPending(null); setPendingSelection(null); setPendingType(null); setNoteVal(''); setSel(null) }
+                    if (e.key === 'Escape') cancelPending()
                   }}
-                  placeholder={pending === 'annotation' ? '添加批注… Enter 提交' : '问 AI… Enter 提交'}
+                  placeholder={pending === 'annotation' ? 'Type here… Enter to submit' : '问 AI… Enter 提交'}
                   className="reading-placeholder-faint w-full bg-transparent text-sm text-ink outline-none py-1.5"
                   style={{
                     fontFamily: 'var(--font-ui)',
-                    borderBottom: `2px solid var(--color-${pending === 'annotation' ? 'umber' : 'slate'})`,
+                    borderBottom: `1px solid var(--color-${pending === 'annotation' ? 'umber' : 'slate'})`,
                   }}
                 />
               </div>

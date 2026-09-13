@@ -57,6 +57,11 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
   const [notes, setNotes] = useState<ApiNote[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [noteComposerOpen, setNoteComposerOpen] = useState(false)
+  const [newNoteTitle, setNewNoteTitle] = useState('')
+  const [newNoteContent, setNewNoteContent] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteError, setNoteError] = useState<string | null>(null)
 
   const requestedBookId = bookId || new URLSearchParams(window.location.search).get('bookId') || undefined
 
@@ -143,6 +148,23 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
     return `/read?${params.toString()}`
   }
 
+  const handleCreateNote = async () => {
+    if (!book || !newNoteContent.trim() || noteSaving) return
+    setNoteSaving(true)
+    setNoteError(null)
+    try {
+      const note = await api.createNote(book.id, newNoteTitle.trim() || '阅读笔记', newNoteContent.trim())
+      setNotes(current => [note, ...current])
+      setNewNoteTitle('')
+      setNewNoteContent('')
+      setNoteComposerOpen(false)
+    } catch (saveError) {
+      setNoteError(saveError instanceof Error ? saveError.message : 'Unable to save this note.')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
   if (loading) return <main className="paratext-page paratext-state" style={style}>Loading book…</main>
   if (error || !book) {
     return <main className="paratext-page paratext-state" style={style}>
@@ -180,9 +202,14 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
               <div className="paratext-progress-block">
                 <div className="paratext-progress-label"><span>Reading progress</span><strong>{progressPercent}%{currentChapterIndex >= 0 ? ` (Ch. ${currentChapterIndex + 1})` : ''}</strong></div>
                 <div className="paratext-progress-track"><span style={{ width: `${progressPercent}%` }} /></div>
-                <button type="button" className="paratext-continue" onClick={() => onNavigate(readPath(lastReadChapterId || chapters[0]?.id))}>
-                  Continue reading <span aria-hidden="true">&rarr;</span>
-                </button>
+                <div className="paratext-progress-actions">
+                  <button type="button" className="paratext-continue" onClick={() => onNavigate(readPath(lastReadChapterId || chapters[0]?.id))}>
+                    Continue reading <span aria-hidden="true">&rarr;</span>
+                  </button>
+                  <button type="button" className="paratext-add-notes" onClick={() => { setNoteError(null); setNoteComposerOpen(true) }}>
+                    add notes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -211,7 +238,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
         </section>
 
         <section className="paratext-ledger" aria-labelledby="ledger-title">
-          <header className="paratext-ledger-header"><h2 id="ledger-title">Reading Ledger</h2></header>
+          <header className="paratext-ledger-header"><h2 id="ledger-title">Margins</h2></header>
           <div className="paratext-ledger-scroll">
             {ledger.length === 0 ? <p className="paratext-empty">No annotations, excerpts, or notes yet.</p> : ledger.map(group => (
               <section className="paratext-ledger-group" key={group.month} aria-label={group.month}>
@@ -232,6 +259,33 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
           </div>
         </section>
       </div>
+
+      {noteComposerOpen && (
+        <div className="paratext-note-modal-backdrop">
+          <div className="paratext-note-modal" role="dialog" aria-modal="true" aria-label="New note">
+            <div className="paratext-note-title">New note</div>
+            <input
+              value={newNoteTitle}
+              onChange={event => setNewNoteTitle(event.target.value)}
+              placeholder="Title (optional)"
+              autoFocus
+            />
+            <textarea
+              value={newNoteContent}
+              onChange={event => setNewNoteContent(event.target.value)}
+              placeholder="Write your thoughts…"
+              rows={7}
+            />
+            {noteError && <p className="paratext-note-error">{noteError}</p>}
+            <div className="paratext-note-actions">
+              <button type="button" onClick={() => setNoteComposerOpen(false)}>Cancel</button>
+              <button type="button" disabled={!newNoteContent.trim() || noteSaving} onClick={() => void handleCreateNote()}>
+                {noteSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
