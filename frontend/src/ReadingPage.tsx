@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage } from './api'
 import { palette } from './theme'
 import './ReadingPage.css'
@@ -128,8 +128,21 @@ function renderParagraph(
   pIdx: number,
   onHover: (id: string | null) => void,
   onClickHighlight: (id: string) => void,
+  pendingSelection?: Sel | null,
+  pendingType?: AnnType | null,
 ): ReactNode {
-  const hits = anns
+  const pendingAnn: Ann | null = pendingSelection && pendingType && pendingType !== 'bookmark' && pendingSelection.paragraphIndex === pIdx
+    ? {
+        id: '__pending-selection__',
+        type: pendingType,
+        paragraphIndex: pIdx,
+        selectedText: pendingSelection.text,
+        note: '',
+        messages: [],
+        expanded: false,
+      }
+    : null
+  const hits = [...anns, ...(pendingAnn ? [pendingAnn] : [])]
     .filter(a => a.paragraphIndex === pIdx)
     .map(a => ({ a, i: text.indexOf(a.selectedText) }))
     .filter(x => x.i !== -1)
@@ -149,7 +162,7 @@ function renderParagraph(
         className={`ann-highlight ann-${a.type}`}
         onMouseEnter={() => onHover(a.id)}
         onMouseLeave={() => onHover(null)}
-        onClick={e => { e.stopPropagation(); onClickHighlight(a.id) }}
+        onClick={e => { e.stopPropagation(); if (a.id !== '__pending-selection__') onClickHighlight(a.id) }}
       >
         {text.slice(i, i + a.selectedText.length)}
       </span>
@@ -267,7 +280,7 @@ function AnnotationEntry({ ann, onHover, onToHighlight, onToggle, replyVal, onRe
 
 // ─── TOC Drawer ───────────────────────────────────────────────────────────────
 
-function TOCDrawer({ open, onClose, chapters, book, currentChapterId, onSelect }: { open: boolean; onClose: () => void; chapters: Array<{ id: string; title: string; chapter_index: number }>; book: { title: string; author: string }; currentChapterId?: string; onSelect: (id: string) => void }) {
+function TOCDrawer({ open, onClose, chapters, book, currentChapterId, onSelect, onBookClick }: { open: boolean; onClose: () => void; chapters: Array<{ id: string; title: string; chapter_index: number }>; book: { title: string; author: string }; currentChapterId?: string; onSelect: (id: string) => void; onBookClick: () => void }) {
   return (
     <>
       {open && (
@@ -287,7 +300,7 @@ function TOCDrawer({ open, onClose, chapters, book, currentChapterId, onSelect }
       >
         <div className="pt-14 px-5 pb-8">
           <div className="mb-6">
-            <p className="text-sm text-ink" style={{ fontFamily: 'var(--font-ui)', fontWeight: 500 }}>{book.title}</p>
+            <button type="button" className="reading-book-link text-left text-sm text-ink" style={{ fontFamily: 'var(--font-ui)', fontWeight: 500 }} onClick={onBookClick}>{book.title}</button>
             <p className="text-xs text-faint mt-0.5" style={{ fontFamily: 'var(--font-ui)' }}>{book.author}</p>
           </div>
           <nav className="space-y-0.5">
@@ -334,6 +347,8 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [sel, setSel] = useState<Sel | null>(null)
   const [pending, setPending] = useState<AnnType | null>(null)
+  const [pendingSelection, setPendingSelection] = useState<Sel | null>(null)
+  const [pendingType, setPendingType] = useState<AnnType | null>(null)
   const [noteVal, setNoteVal] = useState('')
   const [tocOpen, setTocOpen] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -342,13 +357,47 @@ export default function App() {
   const [replies, setReplies] = useState<Record<string, string>>({})
   const [annotationWidth, setAnnotationWidth] = useState(288)
   const [isResizingAnnotations, setIsResizingAnnotations] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [fontSize, setFontSize] = useState(() => Number(window.localStorage.getItem('intertext-reading-font-size') || 17))
+  const [lineHeight, setLineHeight] = useState(() => Number(window.localStorage.getItem('intertext-reading-line-height') || 1.88))
+  const [loadingNext, setLoadingNext] = useState(false)
+  const [noteComposerOpen, setNoteComposerOpen] = useState(false)
+  const [newNoteTitle, setNewNoteTitle] = useState('')
+  const [newNoteContent, setNewNoteContent] = useState('')
+  const [annotationScrollTop, setAnnotationScrollTop] = useState(0)
+  const [pendingComposerTop, setPendingComposerTop] = useState(52)
 
   const noteRef = useRef<HTMLInputElement>(null)
+  const annotationPanelRef = useRef<HTMLDivElement>(null)
+  const pendingComposerRef = useRef<HTMLDivElement>(null)
   const annotationResizeStart = useRef<{ x: number; width: number } | null>(null)
 
   const activeBook = book || { ...FALLBACK_BOOK, id: '', author: FALLBACK_BOOK.author, description: null, status: 'ready', parse_error: null, created_at: '', updated_at: '', import_file: { id: '', file_name: '', file_format: '', file_size: 0, file_hash: '', created_at: '' } }
   const activeChapter = chapters.find(item => item.id === chapterId) || chapters[0]
   const activeChapterTitle = activeChapter?.title || FALLBACK_BOOK.chapter
+
+  useEffect(() => { window.localStorage.setItem('intertext-reading-font-size', String(fontSize)) }, [fontSize])
+  useEffect(() => { window.localStorage.setItem('intertext-reading-line-height', String(lineHeight)) }, [lineHeight])
+
+  const loadNextChapter = async () => {
+    if (!book || !chapterId || loadingNext) return
+    const currentIndex = chapters.findIndex(item => item.id === chapterId)
+    const next = chapters[currentIndex + 1]
+    if (!next) return
+    setLoadingNext(true)
+    try {
+      const chapter = await api.getChapter(book.id, next.id)
+      const split = splitChapterText(chapter.text)
+      const offset = chapterText.length + 2
+      setChapterText(prev => `${prev}\n\n${chapter.text}`)
+      setParagraphs(prev => [...prev, `§ ${next.title || `第 ${next.chapter_index + 1} 章`}`, ...split.paragraphs])
+      setParagraphStarts(prev => [...prev, offset, ...split.starts.map(start => start + offset)])
+      setChapterId(next.id)
+      void api.saveProgress(book.id, next.id).catch(() => undefined)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '下一章加载失败')
+    } finally { setLoadingNext(false) }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -431,6 +480,31 @@ export default function App() {
     }
   }, [isResizingAnnotations])
 
+  useLayoutEffect(() => {
+    const panel = annotationPanelRef.current
+    if (!panel || !pendingSelection || !pendingType || pendingType === 'bookmark') return
+
+    const panelRect = panel.getBoundingClientRect()
+    const composerHeight = pendingComposerRef.current?.offsetHeight || 38
+    const gap = 18
+    let candidate = Math.max(52, (pendingSelection.rect.top + pendingSelection.rect.bottom) / 2 - panelRect.top + panel.scrollTop - composerHeight / 2)
+    const entries = Array.from(panel.querySelectorAll<HTMLElement>('[data-annotation-entry]'))
+      .map(entry => {
+        const rect = entry.getBoundingClientRect()
+        return {
+          top: rect.top - panelRect.top + panel.scrollTop,
+          bottom: rect.bottom - panelRect.top + panel.scrollTop,
+        }
+      })
+      .sort((a, b) => a.top - b.top)
+
+    for (const entry of entries) {
+      const overlaps = candidate < entry.bottom + gap && candidate + composerHeight > entry.top - gap
+      if (overlaps) candidate = entry.bottom + gap
+    }
+    setPendingComposerTop(candidate)
+  }, [pendingSelection, pendingType, annotations, annotationScrollTop, annotationWidth, fontSize, lineHeight])
+
   const sorted = [...annotations].sort((a, b) => {
     if (a.paragraphIndex !== b.paragraphIndex) return a.paragraphIndex - b.paragraphIndex
     return (paragraphs[a.paragraphIndex]?.indexOf(a.selectedText) ?? 0) - (paragraphs[b.paragraphIndex]?.indexOf(b.selectedText) ?? 0)
@@ -475,6 +549,8 @@ export default function App() {
     const localStart = paragraphs[pi]?.indexOf(text) ?? -1
     if (localStart < 0 || !chapterId) return
     const startOffset = utf16Length(chapterText.slice(0, paragraphStart + localStart))
+    setPendingSelection(null)
+    setPendingType(null)
     setSel({ text, paragraphIndex: pi, rect, startOffset, endOffset: startOffset + utf16Length(text) })
   }
 
@@ -491,6 +567,8 @@ export default function App() {
         setTimeout(() => flashEl(`[data-annotation-entry="${id}"]`), 200)
       }).catch(error => setNotice(error instanceof Error ? error.message : '书签保存失败'))
     } else {
+      setPendingSelection(sel)
+      setPendingType(action)
       setPending(action)
       window.getSelection()?.removeAllRanges()
       setTimeout(() => noteRef.current?.focus(), 50)
@@ -505,12 +583,20 @@ export default function App() {
     const selection = sel
     const type = pending
     setSel(null); setPending(null); setNoteVal('')
+    setPendingSelection(selection)
+    setPendingType(type)
     if (type === 'annotation') {
       void api.createAnnotation(book.id, { chapter_id: chapterId, start_offset: selection.startOffset, end_offset: selection.endOffset, selected_text: selection.text, note_content: content, color: 'umber' }).then(annotation => {
         const item: Ann = { id: annotation.id, type: 'annotation', paragraphIndex: selection.paragraphIndex, selectedText: selection.text, note: content, messages: [], expanded: false, chapterId }
         setAnnotations(prev => [...prev, item])
+        setPendingSelection(null)
+        setPendingType(null)
         setTimeout(() => scrollToEntry(item.id), 100)
-      }).catch(error => setNotice(error instanceof Error ? error.message : '批注保存失败'))
+      }).catch(error => {
+        setPendingSelection(null)
+        setPendingType(null)
+        setNotice(error instanceof Error ? error.message : '批注保存失败')
+      })
       return
     }
     setAiTypingId(`pending-${selection.startOffset}`)
@@ -531,9 +617,13 @@ export default function App() {
         const history = await api.listMessages(book.id, conversation.id)
         setMessages(prev => ({ ...prev, [conversation.id]: history }))
         setAnnotations(prev => prev.map(current => current.id === annotation.id ? { ...current, messages: history.filter(message => message.role === 'user' || message.role === 'assistant').map(message => ({ id: message.id, role: message.role === 'assistant' ? 'ai' : 'user', content: message.content })) } : current))
+        setPendingSelection(null)
+        setPendingType(null)
         setAiTypingId(null)
         setTimeout(() => scrollToEntry(annotation.id), 100)
       } catch (error) {
+        setPendingSelection(null)
+        setPendingType(null)
         setAiTypingId(null)
         setNotice(error instanceof Error ? error.message : 'AI 请求失败')
       }
@@ -599,12 +689,20 @@ export default function App() {
     setIsResizingAnnotations(true)
   }
 
+  const handleCreateNote = () => {
+    if (!book || !newNoteContent.trim()) return
+    void api.createNote(book.id, newNoteTitle.trim() || '阅读笔记', newNoteContent.trim()).then(() => {
+      setNotice('笔记已保存')
+      setNoteComposerOpen(false)
+      setNewNoteTitle('')
+      setNewNoteContent('')
+    }).catch(error => setNotice(error instanceof Error ? error.message : '笔记保存失败'))
+  }
+
   // ── Toolbar geometry ───────────────────────────────────────────────────────
 
   const tbLeft = sel ? Math.min(Math.max(130, sel.rect.left + sel.rect.width / 2), window.innerWidth - 130) : 0
   const tbTop  = sel ? Math.max(8, sel.rect.top - 46) : 0
-  const inLeft = sel ? Math.max(16, Math.min(sel.rect.left, window.innerWidth - 300)) : 0
-  const inTop  = sel ? sel.rect.bottom + 10 : 0
 
   const readingVars = {
     '--color-cream': palette.bg,
@@ -635,34 +733,6 @@ export default function App() {
       )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header
-        className="shrink-0 h-12 flex items-center px-5 bg-cream relative z-10"
-        style={{ borderBottom: '1px solid var(--color-rule)' }}
-      >
-        <button
-          data-no-select
-          className="reading-hover-ink flex items-center gap-1.5 text-xs text-mid transition-colors"
-          style={{ fontFamily: 'var(--font-ui)' }}
-          onClick={() => setTocOpen(true)}
-        >
-          <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <line x1="0" y1="1"  x2="14" y2="1"/>
-            <line x1="0" y1="5"  x2="10" y2="5"/>
-            <line x1="0" y1="9"  x2="14" y2="9"/>
-          </svg>
-          目录
-        </button>
-
-        <div className="reading-header-title flex-1 text-center leading-none">
-          <span className="text-sm text-mid" style={{ fontFamily: 'var(--font-ui)' }}>{activeBook.title}</span>
-          <span className="text-faint text-xs mx-2">·</span>
-          <span className="reading-header-chapter text-xs text-faint" style={{ fontFamily: 'var(--font-ui)' }}>{activeChapterTitle}</span>
-        </div>
-
-        <div className="w-14" />
-
-      </header>
-
       {/* ── Main ───────────────────────────────────────────────────────────── */}
       <div className="reading-main flex-1 flex overflow-hidden">
 
@@ -670,27 +740,23 @@ export default function App() {
         <div
           className="reading-area flex-1 overflow-y-auto"
           onMouseUp={handleMouseUp}
+          onScroll={event => {
+            const el = event.currentTarget
+            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) void loadNextChapter()
+          }}
         >
-          <div className="reading-content mx-auto px-6 py-16">
-            <h1
-              className="text-ink mb-1"
-              style={{ fontFamily: 'var(--font-body)', fontWeight: 400, fontSize: '1.55rem' }}
-            >
-              {activeBook.title}
-            </h1>
-            <p className="text-xs text-faint mb-12" style={{ fontFamily: 'var(--font-ui)' }}>
-              {activeBook.author || activeBook.import_file.file_format.toUpperCase()} · {activeChapterTitle}
-            </p>
+          <div className="reading-content mx-auto px-6 py-10">
+            <div className="reading-chapter-header" style={{ fontFamily: 'var(--font-ui)' }}>
+              <button type="button" className="reading-menu-button" aria-label="打开目录" onClick={() => setTocOpen(true)}>≡</button>
+              <h1>{activeChapterTitle}</h1>
+            </div>
 
             <div className="space-y-7">
-              {paragraphs.map((p, i) => (
-                <p
-                  key={i}
-                  data-paragraph-index={i}
-                  className="text-ink"
-                  style={{ fontFamily: 'var(--font-body)', fontSize: '1.08rem', lineHeight: '1.88' }}
-                >
-                  {renderParagraph(p, annotations, i, setHoveredId, scrollToEntry)}
+              {paragraphs.map((p, i) => p.startsWith('§ ') ? (
+                <div key={i} className="reading-next-chapter" style={{ fontFamily: 'var(--font-ui)' }}>{p.slice(2)}</div>
+              ) : (
+                <p key={i} data-paragraph-index={i} className="text-ink" style={{ fontFamily: 'var(--font-body)', fontSize: `${fontSize}px`, lineHeight }}>
+                  {renderParagraph(p, annotations, i, setHoveredId, scrollToEntry, pendingSelection, pendingType)}
                 </p>
               ))}
             </div>
@@ -707,9 +773,15 @@ export default function App() {
             onPointerDown={handleAnnotationResizeStart}
           />
           <div
+            ref={annotationPanelRef}
             className="reading-annotations h-full overflow-y-auto bg-cream"
+            onScroll={event => setAnnotationScrollTop(event.currentTarget.scrollTop)}
             style={{ borderLeft: '1px solid var(--color-rule)' }}
           >
+            <div className="reading-annotation-header px-5" style={{ fontFamily: 'var(--font-ui)' }}>
+              <button type="button" className="reading-control" aria-label="阅读设置" onClick={() => setSettingsOpen(value => !value)}>Aa</button>
+              <button type="button" className="reading-control reading-add" aria-label="新建笔记" onClick={() => setNoteComposerOpen(true)}>+</button>
+            </div>
             <div className="px-5 py-6">
               <p
                 className="text-xs text-faint mb-6 uppercase"
@@ -740,6 +812,34 @@ export default function App() {
                 ))}
               </div>
             </div>
+
+            {pending && pending !== 'bookmark' && sel && (
+              <div
+                data-no-select
+                className="reading-pending-composer"
+                ref={pendingComposerRef}
+                style={{
+                  top: pendingComposerTop,
+                }}
+              >
+                <input
+                  ref={noteRef}
+                  type="text"
+                  value={noteVal}
+                  onChange={e => setNoteVal(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && noteVal.trim()) handleNoteSubmit()
+                    if (e.key === 'Escape') { setPending(null); setPendingSelection(null); setPendingType(null); setNoteVal(''); setSel(null) }
+                  }}
+                  placeholder={pending === 'annotation' ? '添加批注… Enter 提交' : '问 AI… Enter 提交'}
+                  className="reading-placeholder-faint w-full bg-transparent text-sm text-ink outline-none py-1.5"
+                  style={{
+                    fontFamily: 'var(--font-ui)',
+                    borderBottom: `2px solid var(--color-${pending === 'annotation' ? 'umber' : 'slate'})`,
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -751,6 +851,7 @@ export default function App() {
         chapters={chapters}
         book={{ title: activeBook.title, author: activeBook.author || activeBook.import_file.file_format.toUpperCase() }}
         currentChapterId={chapterId}
+        onBookClick={() => { window.location.href = `/paratext?bookId=${encodeURIComponent(activeBook.id)}` }}
         onSelect={id => {
           const params = new URLSearchParams(window.location.search)
           params.set('chapterId', id)
@@ -758,6 +859,23 @@ export default function App() {
           window.location.reload()
         }}
       />
+
+      {settingsOpen && (
+        <div className="reading-settings" style={{ fontFamily: 'var(--font-ui)' }}>
+          <div className="reading-settings-title">阅读设置</div>
+          <label>字号 <input type="range" min="14" max="24" step="1" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} /><span>{fontSize}px</span></label>
+          <label>行距 <input type="range" min="1.4" max="2.4" step="0.05" value={lineHeight} onChange={e => setLineHeight(Number(e.target.value))} /><span>{lineHeight.toFixed(2)}</span></label>
+        </div>
+      )}
+
+      {noteComposerOpen && (
+        <div className="reading-note-popover" data-no-select style={{ fontFamily: 'var(--font-ui)' }}>
+          <div className="reading-settings-title">新建笔记</div>
+          <input value={newNoteTitle} onChange={event => setNewNoteTitle(event.target.value)} placeholder="标题（可选）" />
+          <textarea value={newNoteContent} onChange={event => setNewNoteContent(event.target.value)} placeholder="写下你的想法…" rows={5} autoFocus />
+          <div className="reading-note-actions"><button type="button" onClick={() => setNoteComposerOpen(false)}>取消</button><button type="button" disabled={!newNoteContent.trim()} onClick={handleCreateNote}>保存</button></div>
+        </div>
+      )}
 
       {/* ── Selection toolbar ──────────────────────────────────────────────── */}
       {sel && !pending && (
@@ -787,32 +905,6 @@ export default function App() {
               </button>
             </Fragment>
           ))}
-        </div>
-      )}
-
-      {/* ── Note / question input ──────────────────────────────────────────── */}
-      {pending && pending !== 'bookmark' && sel && (
-        <div
-          data-no-select
-          className="fixed z-50"
-          style={{ top: inTop, left: inLeft, minWidth: 260 }}
-        >
-          <input
-            ref={noteRef}
-            type="text"
-            value={noteVal}
-            onChange={e => setNoteVal(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && noteVal.trim()) handleNoteSubmit()
-              if (e.key === 'Escape') { setPending(null); setNoteVal(''); setSel(null) }
-            }}
-            placeholder={pending === 'annotation' ? '添加批注… Enter 提交' : '问 AI… Enter 提交'}
-            className="reading-placeholder-faint w-full bg-transparent text-sm text-ink outline-none py-1.5"
-            style={{
-              fontFamily: 'var(--font-ui)',
-              borderBottom: `2px solid var(--color-${pending === 'annotation' ? 'umber' : 'slate'})`,
-            }}
-          />
         </div>
       )}
 

@@ -590,7 +590,7 @@ function AnnotationsPanel({ entries }: { entries: Entry[] }) {
                   padding: '0 0 6px', border: 'none',
                   borderBottom: tab === t ? `1.5px solid ${C.fg}` : '1.5px solid transparent',
                   background: 'transparent',
-                  fontFamily: "'Lora', serif", fontSize: 16, fontWeight: tab === t ? 600 : 500,
+                  fontFamily: "'Lora', serif", fontSize: 20, fontWeight: tab === t ? 600 : 500,
                   color: tab === t ? C.fg : C.muted,
                   cursor: 'pointer', transition: 'all 0.13s ease',
                   letterSpacing: '-0.01em',
@@ -688,7 +688,7 @@ function NotesPanel({ notes }: { notes: Note[] }) {
         display: 'grid', gridTemplateColumns: 'max-content minmax(0, 1fr)', alignItems: 'center', columnGap: 12,
         flexShrink: 0,
       }}>
-        <h2 style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 500, color: C.fg, margin: 0 }}>
+        <h2 style={{ fontFamily: "'Lora', serif", fontSize: 20, fontWeight: 500, color: C.fg, margin: 0 }}>
           Notes
         </h2>
 
@@ -697,7 +697,7 @@ function NotesPanel({ notes }: { notes: Note[] }) {
 
       <div style={{ flex: 1, overflow: 'auto' }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: '18px 20px', color: C.muted, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12 }}>
+          <div style={{ padding: '18px 20px', color: C.muted, fontFamily: "'Source Sans 3', sans-serif", fontSize: 16 }}>
             {searchQuery ? 'No notes match your search.' : 'No notes yet.'}
           </div>
         ) : filtered.map(n => (
