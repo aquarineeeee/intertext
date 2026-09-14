@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiExcerpt, type ApiNote } from './api'
 import { palette as C } from './theme'
+import ConfirmDialog from './ConfirmDialog'
 import './ParatextPage.css'
 
 interface ParatextPageProps {
@@ -13,8 +14,10 @@ type LedgerEntry = {
   kind: 'annotation' | 'excerpt' | 'note'
   quote: string
   note?: string
+  title?: string
   date: string
   timestamp: number
+  sourceId: string
 }
 
 type LedgerGroup = { month: string; entries: LedgerEntry[] }
@@ -62,6 +65,15 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
   const [newNoteContent, setNewNoteContent] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [selectedEntry, setSelectedEntry] = useState<LedgerEntry | null>(null)
+  const [entryModalMode, setEntryModalMode] = useState<'view' | 'edit'>('view')
+  const [entryEditTitle, setEntryEditTitle] = useState('')
+  const [entryEditContent, setEntryEditContent] = useState('')
+  const [entryActionError, setEntryActionError] = useState<string | null>(null)
+  const [entrySaving, setEntrySaving] = useState(false)
+  const [pendingDeleteEntry, setPendingDeleteEntry] = useState<LedgerEntry | null>(null)
+  const [entryDeleting, setEntryDeleting] = useState(false)
 
   const requestedBookId = bookId || new URLSearchParams(window.location.search).get('bookId') || undefined
 
@@ -124,6 +136,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
       note: annotation.note_content || undefined,
       date: annotation.created_at,
       timestamp: Date.parse(annotation.created_at) || 0,
+      sourceId: annotation.id,
     })),
     ...excerpts.map(excerpt => ({
       id: `excerpt-${excerpt.id}`,
@@ -131,13 +144,16 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
       quote: `“${excerpt.selected_text}”${chapterById.get(excerpt.chapter_id) ? ` | ${chapterById.get(excerpt.chapter_id)!.title}` : ''}`,
       date: excerpt.created_at,
       timestamp: Date.parse(excerpt.created_at) || 0,
+      sourceId: excerpt.id,
     })),
     ...notes.map(note => ({
       id: `note-${note.id}`,
       kind: 'note' as const,
       quote: note.content,
+      title: note.title,
       date: note.updated_at,
       timestamp: Date.parse(note.updated_at) || 0,
+      sourceId: note.id,
     })),
   ]), [annotations, excerpts, notes, chapterById])
 
@@ -162,6 +178,72 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
       setNoteError(saveError instanceof Error ? saveError.message : 'Unable to save this note.')
     } finally {
       setNoteSaving(false)
+    }
+  }
+
+  const openEntryModal = (entry: LedgerEntry, mode: 'view' | 'edit' = 'view') => {
+    setOpenMenuId(null)
+    setSelectedEntry(entry)
+    setEntryModalMode(mode)
+    setEntryActionError(null)
+    setEntryEditTitle(entry.title || '')
+    setEntryEditContent(entry.kind === 'annotation' ? (entry.note || '') : entry.kind === 'note' ? entry.quote : entry.quote)
+  }
+
+  const closeEntryModal = () => {
+    if (entrySaving) return
+    setSelectedEntry(null)
+    setEntryActionError(null)
+  }
+
+  const requestEntryDelete = (entry: LedgerEntry) => {
+    setOpenMenuId(null)
+    setEntryActionError(null)
+    setPendingDeleteEntry(entry)
+  }
+
+  const handleEntryDelete = async () => {
+    if (!book || !pendingDeleteEntry || entryDeleting) return
+    const entry = pendingDeleteEntry
+    setEntryDeleting(true)
+    setEntryActionError(null)
+    try {
+      if (entry.kind === 'annotation') {
+        await api.deleteAnnotation(book.id, entry.sourceId)
+        setAnnotations(current => current.filter(item => item.id !== entry.sourceId))
+      } else if (entry.kind === 'excerpt') {
+        await api.deleteExcerpt(book.id, entry.sourceId)
+        setExcerpts(current => current.filter(item => item.id !== entry.sourceId))
+      } else {
+        await api.deleteNote(book.id, entry.sourceId)
+        setNotes(current => current.filter(item => item.id !== entry.sourceId))
+      }
+      if (selectedEntry?.id === entry.id) closeEntryModal()
+      setPendingDeleteEntry(null)
+    } catch (deleteError) {
+      setEntryActionError(deleteError instanceof Error ? deleteError.message : 'Unable to delete this item.')
+    } finally {
+      setEntryDeleting(false)
+    }
+  }
+
+  const handleEntrySave = async () => {
+    if (!book || !selectedEntry || selectedEntry.kind === 'excerpt' || entrySaving) return
+    setEntrySaving(true)
+    setEntryActionError(null)
+    try {
+      if (selectedEntry.kind === 'annotation') {
+        const updated = await api.updateAnnotation(book.id, selectedEntry.sourceId, { note_content: entryEditContent.trim() || null })
+        setAnnotations(current => current.map(item => item.id === updated.id ? updated : item))
+      } else {
+        const updated = await api.updateNote(book.id, selectedEntry.sourceId, { title: entryEditTitle.trim() || '阅读笔记', content: entryEditContent.trim() })
+        setNotes(current => current.map(item => item.id === updated.id ? updated : item))
+      }
+      setSelectedEntry(null)
+    } catch (saveError) {
+      setEntryActionError(saveError instanceof Error ? saveError.message : 'Unable to save this item.')
+    } finally {
+      setEntrySaving(false)
     }
   }
 
@@ -245,10 +327,44 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
                 <div className="paratext-month"><span>{group.month}</span><i /></div>
                 <div className="paratext-entries">
                   {group.entries.map(entry => (
-                    <article className={`paratext-entry paratext-entry-${entry.kind}`} key={entry.id}>
+                    <article
+                      className={`paratext-entry paratext-entry-${entry.kind}`}
+                      key={entry.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openEntryModal(entry)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          openEntryModal(entry)
+                        }
+                      }}
+                    >
                       <div className="paratext-entry-main">
                         <p>{entry.quote}</p>
-                        <time>{formatDate(entry.date)}</time>
+                        <div className="paratext-entry-meta">
+                          <time>{formatDate(entry.date)}</time>
+                          <button
+                            type="button"
+                            className="paratext-entry-menu-trigger"
+                            aria-label="Item actions"
+                            aria-expanded={openMenuId === entry.id}
+                            onClick={event => {
+                              event.stopPropagation()
+                              setOpenMenuId(current => current === entry.id ? null : entry.id)
+                            }}
+                          >
+                            <span aria-hidden="true">…</span>
+                          </button>
+                          {openMenuId === entry.id && (
+                            <div className="paratext-entry-menu" role="menu" onClick={event => event.stopPropagation()}>
+                              {entry.kind !== 'excerpt' && (
+                                <button type="button" role="menuitem" onClick={() => openEntryModal(entry, 'edit')}>编辑</button>
+                              )}
+                              <button type="button" role="menuitem" onClick={() => requestEntryDelete(entry)}>删除</button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {entry.note && <p className="paratext-entry-note">{entry.note}</p>}
                     </article>
@@ -285,6 +401,47 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
             </div>
           </div>
         </div>
+      )}
+
+      {selectedEntry && (
+        <div className="paratext-note-modal-backdrop" onClick={closeEntryModal}>
+          <div className="paratext-note-modal paratext-entry-modal" role="dialog" aria-modal="true" aria-label="Annotation details" onClick={event => event.stopPropagation()}>
+            <div className="paratext-note-title">{entryModalMode === 'edit' ? '编辑条目' : selectedEntry.kind === 'annotation' ? '批注详情' : selectedEntry.kind === 'note' ? '阅读笔记' : '摘录详情'}</div>
+            {entryModalMode === 'edit' && selectedEntry.kind === 'note' ? (
+              <input value={entryEditTitle} onChange={event => setEntryEditTitle(event.target.value)} placeholder="标题" autoFocus />
+            ) : selectedEntry.title ? (
+              <div className="paratext-entry-modal-heading">{selectedEntry.title}</div>
+            ) : null}
+            {selectedEntry.kind !== 'note' && <blockquote className="paratext-entry-modal-quote">{selectedEntry.quote}</blockquote>}
+            {entryModalMode === 'edit' && selectedEntry.kind !== 'excerpt' ? (
+              <textarea value={entryEditContent} onChange={event => setEntryEditContent(event.target.value)} rows={8} autoFocus={selectedEntry.kind === 'annotation'} />
+            ) : selectedEntry.kind === 'note' ? (
+              <p className="paratext-entry-modal-content">{selectedEntry.quote}</p>
+            ) : selectedEntry.note ? (
+              <p className="paratext-entry-modal-content">{selectedEntry.note}</p>
+            ) : <p className="paratext-entry-modal-empty">暂无批注内容</p>}
+            <div className="paratext-entry-modal-date">{formatDate(selectedEntry.date)}</div>
+            {entryActionError && <p className="paratext-note-error">{entryActionError}</p>}
+            <div className="paratext-note-actions">
+              <button type="button" onClick={closeEntryModal}>关闭</button>
+              {entryModalMode === 'view' && selectedEntry.kind !== 'excerpt' && <button type="button" onClick={() => openEntryModal(selectedEntry, 'edit')}>编辑</button>}
+              {entryModalMode === 'edit' && <button type="button" disabled={entrySaving || (selectedEntry.kind === 'note' && !entryEditContent.trim())} onClick={() => void handleEntrySave()}>{entrySaving ? '保存中…' : '保存'}</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDeleteEntry && (
+        <ConfirmDialog
+          title="删除条目？"
+          message={`“${pendingDeleteEntry.kind === 'note' ? pendingDeleteEntry.title || '阅读笔记' : pendingDeleteEntry.quote.replace(/^“|”$/g, '')}”将被永久删除。`}
+          confirmLabel="删除"
+          cancelLabel="取消"
+          isBusy={entryDeleting}
+          error={entryActionError}
+          onCancel={() => { if (!entryDeleting) setPendingDeleteEntry(null) }}
+          onConfirm={() => { void handleEntryDelete() }}
+        />
       )}
     </main>
   )

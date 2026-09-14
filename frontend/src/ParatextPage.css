@@ -125,14 +125,28 @@
 .paratext-month span { color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.11em; text-transform: uppercase; white-space: nowrap; }
 .paratext-month i { width: 100%; height: 1px; background: var(--paratext-rule); }
 .paratext-entries { margin-top: 9px; border-top: 1px solid var(--paratext-rule); }
-.paratext-entry { padding: 14px 0; border-bottom: 1px solid var(--paratext-rule); }
+.paratext-entry { position: relative; padding: 14px 0; border-bottom: 1px solid var(--paratext-rule); cursor: pointer; outline: 0; }
+.paratext-entry:hover, .paratext-entry:focus-visible { background: color-mix(in srgb, var(--paratext-surface-muted) 42%, transparent); }
 .paratext-entry-main { display: flex; align-items: flex-start; gap: 16px; }
 .paratext-entry-main p { min-width: 0; flex: 1; margin: 0; color: var(--paratext-ink); font-family: 'Lora', Georgia, serif; font-size: 14px; line-height: 1.45; }
 .paratext-entry-excerpt .paratext-entry-main p { font-style: italic; }
 .paratext-entry-note .paratext-entry-main p { color: var(--paratext-ink); }
 .paratext-entry-annotation .paratext-entry-main p { font-style: italic; }
-.paratext-entry time { flex: 0 0 auto; padding-top: 2px; color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+.paratext-entry-meta { position: static; flex: 0 0 38px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.paratext-entry time { color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; white-space: nowrap; }
+.paratext-entry-menu-trigger { position: absolute; right: 0; bottom: 6px; width: 24px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; color: var(--paratext-muted); background: transparent; font-size: 17px; line-height: 1; cursor: pointer; transition: color 120ms ease; }
+.paratext-entry-menu-trigger:hover { color: var(--paratext-ink); }
+.paratext-entry-menu { position: absolute; right: 0; bottom: 29px; z-index: 5; min-width: 78px; padding: 4px 0; border: 1px solid var(--paratext-rule-strong); background: var(--paratext-bg); box-shadow: 0 8px 18px rgba(42, 33, 24, 0.12); }
+.paratext-entry-menu button { display: block; width: 100%; padding: 7px 12px; border: 0; color: var(--paratext-ink); background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.paratext-entry-menu button:hover, .paratext-entry-menu button:focus-visible { background: var(--paratext-surface-muted); outline: 0; }
 .paratext-entry-note { margin: 6px 36px 0 14px; color: var(--paratext-muted); font-size: 12px; line-height: 1.45; }
+
+.paratext-entry-modal-heading { margin-top: 18px; font-family: 'Lora', Georgia, serif; font-size: 15px; }
+.paratext-entry-modal-quote { margin: 18px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--paratext-rule-strong); color: var(--paratext-ink); font-family: 'Lora', Georgia, serif; font-size: 16px; line-height: 1.65; }
+.paratext-entry-modal-content { margin: 18px 0 0; white-space: pre-wrap; color: var(--paratext-ink); font-family: 'Lora', Georgia, serif; font-size: 15px; line-height: 1.7; }
+.paratext-entry-modal-empty { margin: 18px 0 0; color: var(--paratext-muted); font-size: 13px; }
+.paratext-entry-modal-date { margin-top: 18px; color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+.paratext-entry-modal textarea { min-height: 150px; margin-top: 18px; padding: 10px; border: 1px solid var(--paratext-rule); line-height: 1.6; }
 
 .paratext-note-modal-backdrop {
   position: fixed;
@@ -174,6 +188,7 @@
   .paratext-contents { min-height: 300px; }
   .paratext-ledger { min-height: 410px; margin-top: 28px; padding: 22px 0 0; border-top: 1px solid var(--paratext-rule); border-left: 0; }
   .paratext-ledger-scroll { padding-right: 4px; }
+  .paratext-entry-menu-trigger { opacity: 1; }
   .paratext-note-modal-backdrop { padding: 18px; }
   .paratext-note-modal { padding: 22px 20px 20px; }
 }

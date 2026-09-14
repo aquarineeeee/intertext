@@ -5,6 +5,7 @@ import SettingsPage from './SettingsPage'
 import AuthPage from './AuthPage'
 import ReadingPage from './ReadingPage'
 import ParatextPage from './ParatextPage'
+import ConfirmDialog from './ConfirmDialog'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const SECTION_HEADER_HEIGHT = 114
@@ -176,68 +177,16 @@ function PanelSearch({ onSearch }: { onSearch: (query: string) => void }) {
 }
 
 function DeleteBookDialog({ book, isDeleting, error, onCancel, onConfirm }: { book: Book; isDeleting: boolean; error: string | null; onCancel: () => void; onConfirm: () => void }) {
-  const cancelButtonRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    cancelButtonRef.current?.focus()
-  }, [])
-
-  return (
-    <div
-      role="presentation"
-      onMouseDown={event => { if (event.target === event.currentTarget && !isDeleting) onCancel() }}
-      style={{
-        position: 'fixed',
-        zIndex: 20,
-        inset: 0,
-        display: 'grid',
-        placeItems: 'center',
-        padding: 20,
-        background: 'rgba(47, 42, 39, 0.30)',
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-book-title"
-        style={{
-          width: 'min(360px, 100%)',
-          padding: 20,
-          border: `1px solid ${C.borderMid}`,
-          borderRadius: 4,
-          background: C.card,
-          boxShadow: '0 16px 45px rgba(47,42,39,0.18)',
-        }}
-      >
-        <h2 id="delete-book-title" style={{ margin: 0, color: C.fg, fontFamily: "'Lora', serif", fontSize: 18, fontWeight: 500 }}>
-          Delete book?
-        </h2>
-        <p style={{ margin: '8px 0 0', color: C.muted, fontFamily: "'Source Sans 3', sans-serif", fontSize: 13, lineHeight: 1.5 }}>
-          “{book.title}” and its reading data will be permanently removed.
-        </p>
-        {error && <p role="alert" style={{ margin: '10px 0 0', color: C.danger, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12 }}>{error}</p>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
-          <button
-            ref={cancelButtonRef}
-            type="button"
-            disabled={isDeleting}
-            onClick={onCancel}
-            style={{ padding: '6px 10px', border: `1px solid ${C.borderMid}`, borderRadius: 3, background: 'transparent', color: C.fg, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12, cursor: isDeleting ? 'wait' : 'pointer' }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={isDeleting}
-            onClick={onConfirm}
-            style={{ padding: '6px 10px', border: 'none', borderRadius: 3, background: C.danger, color: C.white, fontFamily: "'Source Sans 3', sans-serif", fontSize: 12, cursor: isDeleting ? 'wait' : 'pointer', opacity: isDeleting ? 0.7 : 1 }}
-          >
-            {isDeleting ? 'Deleting' : 'Delete'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+  return <ConfirmDialog
+    title="Delete book?"
+    message={`“${book.title}” and its reading data will be permanently removed.`}
+    confirmLabel="Delete"
+    cancelLabel="Cancel"
+    isBusy={isDeleting}
+    error={error}
+    onCancel={onCancel}
+    onConfirm={onConfirm}
+  />
 }
 
 
