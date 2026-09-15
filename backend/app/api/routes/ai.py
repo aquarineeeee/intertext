@@ -24,7 +24,7 @@ ai_router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 def _provider_view(item: AIProvider) -> dict:
-    return {"id": item.id, "name": item.name, "provider_type": item.provider_type, "model": item.model, "base_url": item.base_url, "enabled": item.enabled, "has_api_key": bool(item.api_key_encrypted), "created_at": item.created_at, "updated_at": item.updated_at}
+    return {"id": item.id, "name": item.name, "provider_type": item.provider_type, "interface_format": item.interface_format, "model": item.model, "base_url": item.base_url, "enabled": item.enabled, "has_api_key": bool(item.api_key_encrypted), "created_at": item.created_at, "updated_at": item.updated_at}
 
 
 @ai_router.get("/providers", response_model=list[AIProviderResponse])
@@ -34,7 +34,7 @@ def list_providers(db: DbSession = Depends(get_db), user: User = Depends(get_cur
 
 @ai_router.post("/providers", response_model=AIProviderResponse, status_code=201)
 def create_provider(payload: AIProviderCreate, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)):
-    item = AIProvider(user_id=user.id, name=payload.name, provider_type=payload.provider_type, model=payload.model, base_url=payload.base_url, api_key_encrypted=encrypt_secret(payload.api_key, __import__('app.core.config', fromlist=['get_settings']).get_settings()) if payload.api_key else None, enabled=payload.enabled)
+    item = AIProvider(user_id=user.id, name=payload.name, provider_type=payload.provider_type, interface_format=payload.interface_format, model=payload.model, base_url=payload.base_url, api_key_encrypted=encrypt_secret(payload.api_key, __import__('app.core.config', fromlist=['get_settings']).get_settings()) if payload.api_key else None, enabled=payload.enabled)
     db.add(item)
     try:
         db.commit()
@@ -50,7 +50,7 @@ def update_provider(provider_id: str, payload: AIProviderUpdate, db: DbSession =
     item = db.scalar(select(AIProvider).where(AIProvider.id == provider_id, AIProvider.user_id == user.id))
     if item is None:
         raise AppError(404, "provider_not_found", "Provider 不存在")
-    for field in ("name", "model", "base_url", "enabled"):
+    for field in ("name", "model", "base_url", "enabled", "interface_format"):
         value = getattr(payload, field)
         if value is not None:
             setattr(item, field, value)

@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.books import router as books_router
-from app.api.routes.reading import router as reading_router
+from app.api.routes.reading import router as reading_router, stats_router as reading_stats_router
 from app.api.routes.collaboration import router as collaboration_router
 from app.api.routes.ai import router as ai_router, ai_router as ai_global_router
 from app.api.routes.mcp import router as mcp_router
@@ -67,6 +67,8 @@ def create_app() -> FastAPI:
     app.include_router(books_router, prefix="/api")
     app.include_router(reading_router, prefix="/api/v1")
     app.include_router(reading_router, prefix="/api")
+    app.include_router(reading_stats_router, prefix="/api/v1")
+    app.include_router(reading_stats_router, prefix="/api")
     app.include_router(collaboration_router, prefix="/api/v1")
     app.include_router(collaboration_router, prefix="/api")
     app.include_router(ai_router, prefix="/api/v1")

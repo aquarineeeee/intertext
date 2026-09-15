@@ -11,7 +11,7 @@ class AIProvider(Base):
     __tablename__ = "ai_providers"
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_ai_providers_user_name"),
-        CheckConstraint("provider_type IN ('openai', 'anthropic', 'ollama')", name="ck_ai_providers_type"),
+        CheckConstraint("provider_type IN ('openai', 'anthropic', 'ollama', 'custom')", name="ck_ai_providers_type"),
         Index("ix_ai_providers_user_id", "user_id"),
     )
 
@@ -19,6 +19,7 @@ class AIProvider(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     provider_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    interface_format: Mapped[str | None] = mapped_column(String(20), nullable=True)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

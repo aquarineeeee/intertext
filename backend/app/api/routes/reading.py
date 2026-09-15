@@ -1,3 +1,5 @@
+from datetime import date, datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
@@ -16,10 +18,12 @@ from app.schemas.reading import (
     ExcerptResponse,
     ReadingProgressRequest,
     ReadingProgressResponse,
+    ReadingStatsResponse,
 )
 from app.services.book_parser import utf16_length
 
 router = APIRouter(prefix="/books", tags=["reading"])
+stats_router = APIRouter(prefix="/reading", tags=["reading"])
 
 
 def _book(db: DbSession, book_id: str, user: User) -> Book:
@@ -122,6 +126,36 @@ def save_progress(book_id: str, payload: ReadingProgressRequest, db: DbSession =
     db.commit()
     db.refresh(progress)
     return progress
+
+
+@stats_router.get("/stats", response_model=ReadingStatsResponse)
+def reading_stats(db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> dict:
+    books = list(db.scalars(select(Book).where(Book.user_id == user.id)).all())
+    book_ids = [book.id for book in books]
+    progresses = list(db.scalars(select(ReadingProgress).where(ReadingProgress.user_id == user.id)).all()) if book_ids else []
+    chapters = list(db.scalars(select(Chapter).where(Chapter.book_id.in_(book_ids))).all()) if book_ids else []
+    max_indexes: dict[str, int] = {}
+    for chapter in chapters:
+        max_indexes[chapter.book_id] = max(max_indexes.get(chapter.book_id, -1), chapter.chapter_index)
+    finished = 0
+    activity_counts: dict[date, int] = {}
+    for progress in progresses:
+        day = progress.updated_at.date() if progress.updated_at else None
+        if day:
+            activity_counts[day] = activity_counts.get(day, 0) + 1
+        chapter = next((item for item in chapters if item.id == progress.furthest_read_chapter_id), None)
+        if chapter and chapter.chapter_index >= max_indexes.get(chapter.book_id, 0):
+            finished += 1
+    today = datetime.now(timezone.utc).date()
+    start = today - timedelta(days=364)
+    activity = [{"date": start + timedelta(days=index), "count": activity_counts.get(start + timedelta(days=index), 0)} for index in range(365)]
+    active_month = sum(1 for day in activity_counts if day.year == today.year and day.month == today.month)
+    streak = 0
+    cursor = today
+    while activity_counts.get(cursor, 0) > 0:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return {"day_streak": streak, "active_days_this_month": active_month, "books_finished": finished, "activity": activity}
 
 
 @router.get("/{book_id}/annotations", response_model=list[AnnotationResponse])

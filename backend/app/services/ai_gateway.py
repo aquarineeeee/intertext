@@ -117,7 +117,9 @@ class OllamaProvider:
             raise AppError(502, "provider_unavailable", "AI Provider 暂时不可用") from exc
 
 
-def provider_for(provider_type: str, api_key: str | None, base_url: str | None) -> AIProvider:
+def provider_for(provider_type: str, api_key: str | None, base_url: str | None, interface_format: str | None = None) -> AIProvider:
+    if provider_type == "custom":
+        provider_type = interface_format or "openai"
     if provider_type == "openai":
         if not api_key:
             raise AppError(422, "provider_key_missing", "OpenAI Provider 尚未配置 API Key")

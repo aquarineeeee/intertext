@@ -4,12 +4,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-ProviderType = Literal["openai", "anthropic", "ollama"]
+ProviderType = Literal["openai", "anthropic", "ollama", "custom"]
+InterfaceFormat = Literal["openai", "anthropic", "ollama"]
 
 
 class AIProviderCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     provider_type: ProviderType
+    interface_format: InterfaceFormat | None = None
     model: str = Field(min_length=1, max_length=100)
     base_url: str | None = Field(default=None, max_length=500)
     api_key: str | None = Field(default=None, max_length=500)
@@ -22,6 +24,7 @@ class AIProviderUpdate(BaseModel):
     base_url: str | None = Field(default=None, max_length=500)
     api_key: str | None = Field(default=None, max_length=500)
     enabled: bool | None = None
+    interface_format: InterfaceFormat | None = None
 
 
 class AIProviderResponse(BaseModel):
@@ -29,6 +32,7 @@ class AIProviderResponse(BaseModel):
     id: str
     name: str
     provider_type: ProviderType
+    interface_format: InterfaceFormat | None
     model: str
     base_url: str | None
     enabled: bool

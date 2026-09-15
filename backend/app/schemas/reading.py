@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +15,18 @@ class ReadingProgressResponse(BaseModel):
     last_read_chapter_id: str | None
     furthest_read_chapter_id: str | None
     updated_at: datetime
+
+
+class ReadingActivityDay(BaseModel):
+    date: date
+    count: int
+
+
+class ReadingStatsResponse(BaseModel):
+    day_streak: int
+    active_days_this_month: int
+    books_finished: int
+    activity: list[ReadingActivityDay]
 
 
 class AnnotationCreateRequest(BaseModel):

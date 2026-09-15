@@ -6,6 +6,8 @@ export type ApiUser = {
   created_at: string
 }
 
+export type ApiUserSettings = { style: 'guided' | 'discussion' | 'concise'; prompt: string }
+
 export type ApiBook = {
   id: string
   title: string
@@ -44,6 +46,13 @@ export type ApiProgress = {
   furthest_read_chapter_id: string | null
   updated_at: string
 } | null
+
+export type ApiReadingStats = {
+  day_streak: number
+  active_days_this_month: number
+  books_finished: number
+  activity: Array<{ date: string; count: number }>
+}
 
 export type ApiAnnotation = {
   id: string
@@ -104,11 +113,25 @@ export type ApiMessage = {
 export type ApiAIProvider = {
   id: string
   name: string
-  provider_type: 'openai' | 'anthropic' | 'ollama' | string
+  provider_type: 'openai' | 'anthropic' | 'ollama' | 'custom' | string
+  interface_format: 'openai' | 'anthropic' | 'ollama' | null
   model: string
   base_url: string | null
   enabled: boolean
   has_api_key: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ApiMCPServer = {
+  id: string
+  name: string
+  endpoint: string
+  transport: 'streamable-http' | 'sse'
+  has_token: boolean
+  tool_allowlist: string[]
+  capabilities: { tools?: Array<{ name?: string; description?: string }> } | null
+  enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -181,6 +204,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   me: () => request<ApiUser>('/auth/me'),
+  getUserSettings: () => request<ApiUserSettings>('/auth/settings'),
+  updateUserSettings: (changes: Partial<ApiUserSettings>) => request<ApiUserSettings>('/auth/settings', { method: 'PATCH', body: JSON.stringify(changes) }),
   login: (email: string, password: string) =>
     request<{ user: ApiUser }>('/auth/login', {
       method: 'POST',
@@ -196,6 +221,7 @@ export const api = {
   listChapters: (bookId: string) => request<ApiChapter[]>(`/books/${bookId}/chapters`),
   getChapter: (bookId: string, chapterId: string) => request<ApiChapterContent>(`/books/${bookId}/chapters/${chapterId}`),
   getProgress: (bookId: string) => request<ApiProgress>(`/books/${bookId}/progress`),
+  getReadingStats: () => request<ApiReadingStats>('/reading/stats'),
   saveProgress: (bookId: string, lastReadChapterId: string) => request<NonNullable<ApiProgress>>(`/books/${bookId}/progress`, { method: 'PUT', body: JSON.stringify({ last_read_chapter_id: lastReadChapterId }) }),
   listAnnotations: (bookId: string) => request<ApiAnnotation[]>(`/books/${bookId}/annotations`),
   createAnnotation: (bookId: string, annotation: { chapter_id: string; start_offset: number; end_offset: number; selected_text: string; note_content?: string; color?: string }) =>
@@ -250,11 +276,18 @@ export const api = {
     return request<ApiBook>('/books/import', { method: 'POST', body })
   },
   listAIProviders: () => request<ApiAIProvider[]>('/ai/providers'),
-  createAIProvider: (provider: { name: string; provider_type: 'openai' | 'anthropic' | 'ollama'; model: string; base_url?: string; api_key?: string; enabled?: boolean }) =>
+  createAIProvider: (provider: { name: string; provider_type: 'openai' | 'anthropic' | 'ollama' | 'custom'; interface_format?: 'openai' | 'anthropic' | 'ollama'; model: string; base_url?: string; api_key?: string; enabled?: boolean }) =>
     request<ApiAIProvider>('/ai/providers', { method: 'POST', body: JSON.stringify(provider) }),
-  updateAIProvider: (providerId: string, changes: Partial<Pick<ApiAIProvider, 'name' | 'model' | 'base_url' | 'enabled'>> & { api_key?: string }) =>
+  updateAIProvider: (providerId: string, changes: Partial<Pick<ApiAIProvider, 'name' | 'model' | 'base_url' | 'enabled' | 'interface_format'>> & { api_key?: string }) =>
     request<ApiAIProvider>(`/ai/providers/${providerId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   deleteAIProvider: (providerId: string) => request<void>(`/ai/providers/${providerId}`, { method: 'DELETE' }),
+  listMCPServers: () => request<ApiMCPServer[]>('/mcp/servers'),
+  createMCPServer: (server: { name: string; endpoint: string; transport: 'streamable-http' | 'sse'; token?: string; tool_allowlist: string[]; enabled?: boolean }) =>
+    request<ApiMCPServer>('/mcp/servers', { method: 'POST', body: JSON.stringify(server) }),
+  updateMCPServer: (serverId: string, changes: Partial<Pick<ApiMCPServer, 'name' | 'endpoint' | 'transport' | 'tool_allowlist' | 'enabled'>> & { token?: string }) =>
+    request<ApiMCPServer>(`/mcp/servers/${serverId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
+  deleteMCPServer: (serverId: string) => request<void>(`/mcp/servers/${serverId}`, { method: 'DELETE' }),
+  discoverMCPTools: (serverId: string) => request<Array<{ name?: string; description?: string }>>(`/mcp/servers/${serverId}/tools`, { method: 'POST' }),
   searchBook: (bookId: string, query: string, chapterId?: string, limit = 6) =>
     request<ApiSearchResult[]>(`/books/${bookId}/search`, { method: 'POST', body: JSON.stringify({ book_id: bookId, query, chapter_id: chapterId, limit }) }),
   createAIRun: (bookId: string, conversationId: string, payload: { content: string; client_message_id?: string; provider_id?: string; model?: string; chapter_id?: string; selection?: string }) =>

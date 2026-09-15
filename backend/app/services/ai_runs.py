@@ -70,7 +70,7 @@ async def _execute(run_id: str, user_id: str, conversation_id: str, provider_id:
         run.last_sequence = 1
         db.commit()
         context = ContextBuilder(db, user_id).build_context(run.conversation.book_id, conversation_id, selection=selection, chapter_id=chapter_id)
-        provider_impl = provider_for(provider.provider_type, decrypt_secret(provider.api_key_encrypted, get_settings()), provider.base_url)
+        provider_impl = provider_for(provider.provider_type, decrypt_secret(provider.api_key_encrypted, get_settings()), provider.base_url, provider.interface_format)
         message = db.get(Message, run.assistant_message_id)
         output = ""
         sequence = run.last_sequence

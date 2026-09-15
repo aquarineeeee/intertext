@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
@@ -34,3 +35,16 @@ class UserResponse(BaseModel):
 
 class AuthResponse(BaseModel):
     user: UserResponse
+
+
+CompanionStyle = Literal["guided", "discussion", "concise"]
+
+
+class UserSettingsResponse(BaseModel):
+    style: CompanionStyle
+    prompt: str
+
+
+class UserSettingsUpdate(BaseModel):
+    style: CompanionStyle | None = None
+    prompt: str | None = Field(default=None, max_length=20_000)

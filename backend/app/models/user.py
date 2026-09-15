@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -17,6 +17,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    companion_style: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    companion_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     books = relationship("Book", back_populates="user", cascade="all, delete-orphan")
