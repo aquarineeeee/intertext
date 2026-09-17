@@ -74,6 +74,14 @@ class AIRunEventResponse(BaseModel):
     created_at: datetime
 
 
+class AIRunTranscriptEntryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    sequence: int
+    entry_type: str
+    payload: dict
+    created_at: datetime
+
+
 class SearchBookRequest(BaseModel):
     book_id: str
     chapter_id: str | None = None

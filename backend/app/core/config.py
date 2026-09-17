@@ -26,12 +26,16 @@ class Settings(BaseSettings):
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
     s3_region: str | None = None
-    # MCP is deliberately disabled by default until a user configures an allowlist.
+    # Optional server-side safety restriction; user-level tool allowlists are not used.
     mcp_request_timeout_seconds: float = 10.0
     mcp_max_response_bytes: int = 1_048_576
     mcp_max_concurrent_calls: int = 4
     mcp_max_redirects: int = 3
     mcp_allowed_tools: Annotated[list[str], NoDecode] = []
+    # AI tool-loop guardrails. A run snapshots tools once and cannot exceed these limits.
+    ai_tool_max_calls: int = 8
+    ai_tool_max_rounds: int = 8
+    ai_tool_deadline_seconds: float = 90.0
     # Stage 8 application security controls.
     csrf_enabled: bool = True
     rate_limit_requests: int = 120

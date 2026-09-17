@@ -1,19 +1,19 @@
 import json
-import re
 import threading
 import time
 
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.db.session import get_db
-from app.models.mcp import MCPCallLog, MCPServer
+from app.models.mcp import MCPCallLog, MCPServer, MCPToolConfig
 from app.models.user import User
-from app.schemas.mcp import MCPCallRequest, MCPCallResponse, MCPServerCreate, MCPServerResponse, MCPServerUpdate
+from app.schemas.mcp import MCPCallRequest, MCPCallResponse, MCPServerCreate, MCPServerResponse, MCPServerUpdate, MCPToolUpdate
 from app.services.encryption import encrypt_secret
 from app.services.mcp_client import call_tool, list_tools
 from app.services.mcp_security import redact_secrets, validate_endpoint
@@ -21,9 +21,6 @@ from app.services.mcp_security import redact_secrets, validate_endpoint
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 _concurrency = threading.BoundedSemaphore(get_settings().mcp_max_concurrent_calls)
-_WRITE_NAME = re.compile(r"(?:^|[_.\-])(create|delete|remove|update|write|set|put|post|patch|insert|upsert|append|execute|send)(?:$|[_ .\-])", re.I)
-
-
 def _view(server: MCPServer) -> dict:
     return {
         "id": server.id,
@@ -31,7 +28,6 @@ def _view(server: MCPServer) -> dict:
         "endpoint": server.endpoint,
         "transport": server.transport,
         "has_token": bool(server.encrypted_token),
-        "tool_allowlist": server.tool_allowlist or [],
         "capabilities": server.capabilities,
         "enabled": server.enabled,
         "created_at": server.created_at,
@@ -56,17 +52,13 @@ def _log_view(log: MCPCallLog) -> dict:
         "status": log.status,
         "error_message": log.error_message,
         "duration_ms": log.duration_ms,
+        "ai_run_id": log.ai_run_id,
+        "provider_call_id": log.provider_call_id,
+        "invocation_id": log.invocation_id,
+        "exposed_tool_name": log.exposed_tool_name,
+        "attempt": log.attempt,
         "created_at": log.created_at,
     }
-
-
-def _ensure_readonly(name: str, allowlist: list[str], global_allowlist: list[str] | None = None) -> None:
-    if name not in allowlist:
-        raise AppError(403, "mcp_tool_not_allowed", "该 MCP 工具不在只读 allowlist 中")
-    if global_allowlist and name not in global_allowlist:
-        raise AppError(403, "mcp_tool_not_allowed", "该 MCP 工具不在服务端安全 allowlist 中")
-    if _WRITE_NAME.search(name):
-        raise AppError(403, "mcp_tool_not_readonly", "只允许调用只读 MCP 工具")
 
 
 @router.get("/servers", response_model=list[MCPServerResponse])
@@ -77,9 +69,15 @@ def list_servers(db: DbSession = Depends(get_db), user: User = Depends(get_curre
 @router.post("/servers", response_model=MCPServerResponse, status_code=201)
 def create_server(payload: MCPServerCreate, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)):
     validate_endpoint(payload.endpoint, get_settings().environment, resolve_dns=False)
-    item = MCPServer(user_id=user.id, name=payload.name, endpoint=payload.endpoint, transport=payload.transport, encrypted_token=encrypt_secret(payload.token, get_settings()) if payload.token else None, tool_allowlist=payload.tool_allowlist, enabled=payload.enabled)
+    if db.scalar(select(MCPServer).where(MCPServer.user_id == user.id, MCPServer.name == payload.name)) is not None:
+        raise AppError(409, "mcp_server_exists", "MCP Server 名称已存在")
+    item = MCPServer(user_id=user.id, name=payload.name, endpoint=payload.endpoint, transport=payload.transport, encrypted_token=encrypt_secret(payload.token, get_settings()) if payload.token else None, enabled=payload.enabled)
     db.add(item)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise AppError(409, "mcp_server_exists", "MCP Server 名称已存在") from None
     db.refresh(item)
     return _view(item)
 
@@ -90,13 +88,19 @@ def update_server(server_id: str, payload: MCPServerUpdate, db: DbSession = Depe
     if payload.endpoint is not None:
         validate_endpoint(payload.endpoint, get_settings().environment, resolve_dns=False)
         item.endpoint = payload.endpoint
-    for field in ("name", "transport", "tool_allowlist", "enabled"):
+    if payload.name is not None and payload.name != item.name and db.scalar(select(MCPServer).where(MCPServer.user_id == user.id, MCPServer.name == payload.name, MCPServer.id != item.id)) is not None:
+        raise AppError(409, "mcp_server_exists", "MCP Server 名称已存在")
+    for field in ("name", "transport", "enabled"):
         value = getattr(payload, field)
         if value is not None:
             setattr(item, field, value)
     if payload.token is not None:
         item.encrypted_token = encrypt_secret(payload.token, get_settings())
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise AppError(409, "mcp_server_exists", "MCP Server 名称已存在") from None
     db.refresh(item)
     return _view(item)
 
@@ -115,11 +119,37 @@ def discover_tools(server_id: str, db: DbSession = Depends(get_db), user: User =
     if not item.enabled:
         raise AppError(409, "mcp_server_disabled", "MCP Server 已停用")
     tools = list_tools(item, get_settings())
-    global_allowlist = get_settings().mcp_allowed_tools
-    allowed = [tool for tool in tools if tool.get("name") in (item.tool_allowlist or []) and (not global_allowlist or tool.get("name") in global_allowlist) and not _WRITE_NAME.search(tool.get("name", ""))]
     item.capabilities = {"tools": tools}
+    existing = {config.tool_name: config for config in item.tool_configs}
+    discovered_names = set()
+    for tool in tools:
+        tool_name = str(tool.get("name") or "")
+        if not tool_name:
+            continue
+        discovered_names.add(tool_name)
+        config = existing.get(tool_name)
+        if config is None:
+            config = MCPToolConfig(mcp_server_id=item.id, tool_name=tool_name, enabled=True)
+            db.add(config)
+        config.name = tool_name
+        config.description = tool.get("description")
+        config.input_schema = tool.get("inputSchema") or tool.get("input_schema") or {}
+    for tool_name, config in existing.items():
+        if tool_name not in discovered_names:
+            config.enabled = False
     db.commit()
-    return allowed
+    return [{**tool, "enabled": existing.get(str(tool.get("name") or "")).enabled if existing.get(str(tool.get("name") or "")) else True} for tool in tools if tool.get("name")]
+
+
+@router.patch("/servers/{server_id}/tools/{tool_name}", response_model=dict)
+def update_tool(server_id: str, tool_name: str, payload: MCPToolUpdate, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)):
+    item = _server(db, user, server_id)
+    config = db.scalar(select(MCPToolConfig).where(MCPToolConfig.mcp_server_id == item.id, MCPToolConfig.tool_name == tool_name))
+    if config is None:
+        raise AppError(404, "mcp_tool_not_found", "MCP 工具尚未发现")
+    config.enabled = payload.enabled
+    db.commit()
+    return {"server_id": item.id, "tool_name": config.tool_name, "enabled": config.enabled}
 
 
 @router.post("/servers/{server_id}/tools/call", response_model=MCPCallResponse)
@@ -127,7 +157,11 @@ def invoke_tool(server_id: str, payload: MCPCallRequest, db: DbSession = Depends
     item = _server(db, user, server_id)
     if not item.enabled:
         raise AppError(409, "mcp_server_disabled", "MCP Server 已停用")
-    _ensure_readonly(payload.tool_name, item.tool_allowlist or [], get_settings().mcp_allowed_tools)
+    config = db.scalar(select(MCPToolConfig).where(MCPToolConfig.mcp_server_id == item.id, MCPToolConfig.tool_name == payload.tool_name))
+    if config is None:
+        raise AppError(404, "mcp_tool_not_found", "MCP 工具尚未发现")
+    if not config.enabled:
+        raise AppError(409, "mcp_tool_disabled", "MCP 工具已停用")
     safe_args = redact_secrets(payload.arguments)
     log = MCPCallLog(user_id=user.id, mcp_server_id=item.id, tool_name=payload.tool_name, request_params=safe_args, status="running")
     db.add(log)

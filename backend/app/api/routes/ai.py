@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session as DbSession
 from app.api.deps import get_current_user
 from app.core.exceptions import AppError
 from app.db.session import get_db
-from app.models.ai import AIProvider, AIRun, AIRunEvent
+from app.models.ai import AIProvider, AIRun, AIRunEvent, AIRunTranscriptEntry
 from app.models.collaboration import Conversation, Message
 from app.models.user import User
-from app.schemas.ai import AIProviderCreate, AIProviderResponse, AIProviderUpdate, AIRunCreate, AIRunEventResponse, AIRunResponse, SearchBookRequest
+from app.schemas.ai import AIProviderCreate, AIProviderResponse, AIProviderUpdate, AIRunCreate, AIRunEventResponse, AIRunResponse, AIRunTranscriptEntryResponse, SearchBookRequest
 from app.services.ai_runs import cancel_run, create_run
 from app.services.context import ContextBuilder
 from app.services.encryption import encrypt_secret
@@ -101,6 +101,14 @@ def get_run(run_id: str, db: DbSession = Depends(get_db), user: User = Depends(g
     run = db.scalar(select(AIRun).where(AIRun.id == run_id, AIRun.user_id == user.id))
     if run is None: raise AppError(404, "ai_run_not_found", "AI 运行不存在")
     return run
+
+
+@ai_router.get("/runs/{run_id}/transcript", response_model=list[AIRunTranscriptEntryResponse])
+def get_run_transcript(run_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)):
+    run = db.scalar(select(AIRun).where(AIRun.id == run_id, AIRun.user_id == user.id))
+    if run is None:
+        raise AppError(404, "ai_run_not_found", "AI 运行不存在")
+    return list(db.scalars(select(AIRunTranscriptEntry).where(AIRunTranscriptEntry.run_id == run.id).order_by(AIRunTranscriptEntry.sequence)).all())
 
 
 @ai_router.post("/runs/{run_id}/cancel", response_model=AIRunResponse)

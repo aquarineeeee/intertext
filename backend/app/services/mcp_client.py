@@ -83,3 +83,12 @@ def list_tools(server: MCPServer, settings: Settings) -> list[dict]:
 
 def call_tool(server: MCPServer, settings: Settings, tool_name: str, arguments: dict) -> dict:
     return anyio.run(_request, server, settings, "call_tool", tool_name, arguments)
+
+
+async def async_call_tool(server: MCPServer, settings: Settings, tool_name: str, arguments: dict) -> dict:
+    """Call MCP from an existing async run without nesting anyio.run()."""
+    return await _request(server, settings, "call_tool", tool_name, arguments)
+
+
+# Explicit alias for callers that prefer the verb-first async naming.
+call_tool_async = async_call_tool

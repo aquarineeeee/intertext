@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage } from './api'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { api, isUnauthorized, type ApiAIRunTranscriptEntry, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage } from './api'
 import { palette } from './theme'
 import './ReadingPage.css'
 
@@ -7,7 +9,11 @@ import './ReadingPage.css'
 
 type AnnType = 'bookmark' | 'annotation' | 'discussion'
 
-interface Msg { id: string; role: 'user' | 'ai'; content: string }
+interface AssistantStep { kind: 'assistant'; content: string; thinking?: string }
+interface ToolStep { kind: 'tool'; invocationId: string; toolName: string; arguments: unknown; status?: string; result?: unknown; error?: string; durationMs?: number }
+type ConversationStep = AssistantStep | ToolStep
+
+interface Msg { id: string; role: 'user' | 'ai'; content: string; steps?: ConversationStep[] }
 
 interface Ann {
   id: string
@@ -91,6 +97,86 @@ let aiI = 0; let fuI = 0
 const nextAI = () => INIT_AI[aiI++ % INIT_AI.length]
 const nextFU = () => FOLLOW_AI[fuI++ % FOLLOW_AI.length]
 const uid = () => Math.random().toString(36).slice(2, 9)
+
+function formatJson(value: unknown): string {
+  if (typeof value === 'string') return value
+  try { return JSON.stringify(value ?? null, null, 2) } catch { return String(value) }
+}
+
+function transcriptToSteps(entries: ApiAIRunTranscriptEntry[]): ConversationStep[] {
+  const steps: ConversationStep[] = []
+  const tools = new Map<string, ToolStep>()
+  for (const entry of entries) {
+    const payload = entry.payload
+    if (entry.entry_type === 'assistant') {
+      const content = typeof payload.content === 'string' ? payload.content : ''
+      const thinking = typeof payload.thinking === 'string' ? payload.thinking : undefined
+      if (content || thinking) steps.push({ kind: 'assistant', content, thinking })
+      continue
+    }
+    if (entry.entry_type === 'tool_call') {
+      const invocationId = String(payload.invocation_id || `${entry.sequence}`)
+      const tool: ToolStep = { kind: 'tool', invocationId, toolName: String(payload.tool_name || 'tool'), arguments: payload.arguments ?? {} }
+      tools.set(invocationId, tool)
+      steps.push(tool)
+      continue
+    }
+    if (entry.entry_type === 'tool_result') {
+      const invocationId = String(payload.invocation_id || '')
+      const tool = tools.get(invocationId)
+      if (!tool) continue
+      tool.status = String(payload.status || 'completed')
+      tool.result = payload.result
+      tool.error = typeof payload.error === 'string' ? payload.error : undefined
+      tool.durationMs = typeof payload.duration_ms === 'number' ? payload.duration_ms : undefined
+    }
+  }
+  return steps
+}
+
+async function toDisplayMessages(items: ApiMessage[]): Promise<Msg[]> {
+  return Promise.all(items.filter(message => message.role === 'user' || message.role === 'assistant').map(async message => {
+    let steps: ConversationStep[] | undefined
+    if (message.role === 'assistant' && message.ai_run_id) {
+      try { steps = transcriptToSteps(await api.getAIRunTranscript(message.ai_run_id)) } catch { steps = undefined }
+    }
+    return { id: message.id, role: message.role === 'assistant' ? 'ai' as const : 'user' as const, content: message.content, steps }
+  }))
+}
+
+function Markdown({ children }: { children: string }) {
+  return <div className="reading-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown></div>
+}
+
+function Transcript({ steps }: { steps: ConversationStep[] }) {
+  return <div className="reading-transcript">
+    {steps.map((step, index) => step.kind === 'assistant' ? (
+      <Fragment key={`assistant-${index}`}>
+        {step.thinking && <details className="reading-thinking" open>
+          <summary>思考过程</summary>
+          <Markdown>{step.thinking}</Markdown>
+        </details>}
+        {step.content && <Markdown>{step.content}</Markdown>}
+      </Fragment>
+    ) : (
+      <details className="reading-tool-call" key={`${step.invocationId}-${index}`}>
+        <summary><span>工具调用记录</span><code title={step.toolName}>{step.toolName}</code><span>{step.status === 'success' ? '已完成' : step.status ? '未完成' : '调用中'}</span></summary>
+        <div className="reading-tool-detail">
+          <strong>模型参数</strong>
+          <pre>{formatJson(step.arguments)}</pre>
+          {(step.result !== undefined || step.error) && <><strong>工具返回</strong><pre>{formatJson(step.result ?? step.error)}</pre></>}
+          {step.durationMs !== undefined && <small>耗时 {step.durationMs} ms</small>}
+        </div>
+      </details>
+    ))}
+  </div>
+}
+
+function resizeComposer(element: HTMLTextAreaElement) {
+  element.style.height = 'auto'
+  element.style.height = `${Math.min(element.scrollHeight, 46)}px`
+  element.style.overflowY = element.scrollHeight > 46 ? 'auto' : 'hidden'
+}
 
 // ─── Seed annotations ─────────────────────────────────────────────────────────
 
@@ -231,11 +317,13 @@ function AnnotationEntry({ ann, onHover, onToHighlight, onToggle, replyVal, onRe
           {visibleMsgs.map(msg => (
             <div key={msg.id} className="mb-3">
               <div className="text-xs text-faint mb-1">{msg.role === 'user' ? '你' : 'AI'}</div>
-              <div className="text-sm text-ink leading-relaxed">{msg.content}</div>
+              <div className="text-sm text-ink leading-relaxed">
+                {msg.role === 'ai' && msg.steps?.length ? <Transcript steps={msg.steps} /> : <Markdown>{msg.content}</Markdown>}
+              </div>
             </div>
           ))}
 
-          {isTyping && (
+          {isTyping && !visibleMsgs.some(message => message.id.startsWith('run-')) && (
             <div className="mb-3">
               <div className="text-xs text-faint mb-1">AI</div>
               <div className="text-sm text-faint animate-pulse">···</div>
@@ -253,12 +341,14 @@ function AnnotationEntry({ ann, onHover, onToHighlight, onToggle, replyVal, onRe
           )}
 
           {showInput && (
-            <div className="border-b border-rule pt-1">
-              <input
-                type="text"
+            <div className="reading-composer border-b border-rule pt-1">
+              <textarea
                 value={replyVal}
-                onChange={e => onReplyChange(ann.id, e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && replyVal.trim()) onReplySubmit(ann.id) }}
+                rows={1}
+                onChange={e => { onReplyChange(ann.id, e.target.value); resizeComposer(e.currentTarget) }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && replyVal.trim()) { e.preventDefault(); onReplySubmit(ann.id) }
+                }}
                 placeholder="继续追问…"
                 className="reading-placeholder-faint w-full bg-transparent text-sm text-ink outline-none py-1"
                 style={{ fontFamily: 'var(--font-ui)' }}
@@ -360,10 +450,55 @@ export default function App() {
   const [annotationScrollTop, setAnnotationScrollTop] = useState(0)
   const [pendingComposerTop, setPendingComposerTop] = useState(52)
 
-  const noteRef = useRef<HTMLInputElement>(null)
+  const noteRef = useRef<HTMLTextAreaElement>(null)
   const annotationPanelRef = useRef<HTMLDivElement>(null)
   const pendingComposerRef = useRef<HTMLDivElement>(null)
   const annotationResizeStart = useRef<{ x: number; width: number } | null>(null)
+  const eventSources = useRef<Record<string, EventSource>>({})
+
+  useEffect(() => () => {
+    Object.values(eventSources.current).forEach(source => source.close())
+    eventSources.current = {}
+  }, [])
+
+  const watchRun = useCallback((runId: string, annotationId: string) => {
+    const messageId = `run-${runId}`
+    let lastSequence = 0
+    const updateSteps = (update: (steps: ConversationStep[]) => ConversationStep[]) => {
+      setAnnotations(current => current.map(annotation => {
+        if (annotation.id !== annotationId) return annotation
+        const existing = annotation.messages.find(message => message.id === messageId)
+        const nextMessage: Msg = { id: messageId, role: 'ai', content: '', steps: update(existing?.steps || []) }
+        return { ...annotation, messages: existing ? annotation.messages.map(message => message.id === messageId ? nextMessage : message) : [...annotation.messages, nextMessage] }
+      }))
+    }
+    const source = api.subscribeAIRunEvents(runId, {
+      onEvent: event => {
+        if (event.sequence <= lastSequence) return
+        lastSequence = event.sequence
+        const payload = event.payload
+        if (event.event_type === 'text_delta' || event.event_type === 'thinking_delta') {
+          const key = event.event_type === 'text_delta' ? 'content' : 'thinking'
+          const value = String(payload[event.event_type === 'text_delta' ? 'text' : 'thinking'] || '')
+          updateSteps(steps => {
+            const last = steps.at(-1)
+            if (last?.kind === 'assistant') return [...steps.slice(0, -1), { ...last, [key]: `${last[key] || ''}${value}` }]
+            return [...steps, { kind: 'assistant', content: key === 'content' ? value : '', thinking: key === 'thinking' ? value : undefined }]
+          })
+        } else if (event.event_type === 'tool_call_started') {
+          updateSteps(steps => [...steps, { kind: 'tool', invocationId: String(payload.invocation_id || uid()), toolName: String(payload.tool_name || 'tool'), arguments: payload.arguments ?? {} }])
+        } else if (event.event_type === 'tool_call_completed') {
+          updateSteps(steps => steps.map(step => step.kind === 'tool' && step.invocationId === String(payload.invocation_id || '') ? { ...step, status: String(payload.status || 'completed'), result: payload.result, error: typeof payload.error === 'string' ? payload.error : undefined, durationMs: typeof payload.duration_ms === 'number' ? payload.duration_ms : undefined } : step))
+        } else if (['run_completed', 'failed', 'partial', 'cancelled'].includes(event.event_type)) {
+          source.close()
+          delete eventSources.current[runId]
+        }
+      },
+      onError: () => undefined,
+    })
+    eventSources.current[runId] = source
+    return source
+  }, [])
 
   const activeBook = book || { ...FALLBACK_BOOK, id: '', author: FALLBACK_BOOK.author, description: null, status: 'ready', parse_error: null, created_at: '', updated_at: '', import_file: { id: '', file_name: '', file_format: '', file_size: 0, file_hash: '', created_at: '' } }
   const activeChapter = chapters.find(item => item.id === chapterId) || chapters[0]
@@ -423,13 +558,14 @@ export default function App() {
         ]
         const conversationMessages = await Promise.all(bookConversations.map(async conversation => [conversation.id, await api.listMessages(selected.id, conversation.id)] as const))
         const messageMap = Object.fromEntries(conversationMessages)
+        const displayMessageMap = Object.fromEntries(await Promise.all(conversationMessages.map(async ([conversationId, items]) => [conversationId, await toDisplayMessages(items)] as const)))
         for (const conversation of bookConversations) {
           if (!conversation.annotation_id) continue
           const anchor = anns.find(item => item.id === conversation.annotation_id)
           if (anchor) {
             anchor.type = 'discussion'
             anchor.conversationId = conversation.id
-            anchor.messages = (messageMap[conversation.id] || []).filter(message => message.role === 'user' || message.role === 'assistant').map(message => ({ id: message.id, role: message.role === 'assistant' ? 'ai' : 'user', content: message.content }))
+            anchor.messages = displayMessageMap[conversation.id] || []
           }
         }
         if (cancelled) return
@@ -644,14 +780,16 @@ export default function App() {
         setConversations(prev => [...prev, conversation])
         setAiTypingId(annotation.id)
         const run = await api.createAIRun(book.id, conversation.id, { content, chapter_id: chapterId, selection: selection.text, client_message_id: uid() })
+        watchRun(run.id, annotation.id)
         let status = run.status
         for (let attempt = 0; attempt < 125 && ['queued', 'running'].includes(status); attempt += 1) {
           await new Promise(resolve => window.setTimeout(resolve, 1000))
           status = (await api.getAIRun(run.id)).status
         }
         const history = await api.listMessages(book.id, conversation.id)
+        const displayHistory = await toDisplayMessages(history)
         setMessages(prev => ({ ...prev, [conversation.id]: history }))
-        setAnnotations(prev => prev.map(current => current.id === annotation.id ? { ...current, messages: history.filter(message => message.role === 'user' || message.role === 'assistant').map(message => ({ id: message.id, role: message.role === 'assistant' ? 'ai' : 'user', content: message.content })) } : current))
+        setAnnotations(prev => prev.map(current => current.id === annotation.id ? { ...current, messages: displayHistory } : current))
         setPendingSelection(null)
         setPendingType(null)
         setAiTypingId(null)
@@ -671,20 +809,22 @@ export default function App() {
     const content = replies[annId]?.trim()
     const ann = annotations.find(item => item.id === annId)
     if (!content || !ann?.conversationId || !book) return
-    setAnnotations(prev => prev.map(a => a.id === annId ? { ...a, messages: [...a.messages, { id: uid(), role: 'user', content }] } : a))
+    setAnnotations(prev => prev.map(a => a.id === annId ? { ...a, expanded: true, messages: [...a.messages, { id: uid(), role: 'user', content }] } : a))
     setReplies(prev => ({ ...prev, [annId]: '' }))
     setAiTypingId(annId)
     void (async () => {
       try {
         const run = await api.createAIRun(book.id, ann.conversationId!, { content, chapter_id: chapterId, selection: ann.selectedText, client_message_id: uid() })
+        watchRun(run.id, annId)
         let status = run.status
         for (let attempt = 0; attempt < 125 && ['queued', 'running'].includes(status); attempt += 1) {
           await new Promise(resolve => window.setTimeout(resolve, 1000))
           status = (await api.getAIRun(run.id)).status
         }
         const history = await api.listMessages(book.id, ann.conversationId!)
+        const displayHistory = await toDisplayMessages(history)
         setMessages(prev => ({ ...prev, [ann.conversationId!]: history }))
-        setAnnotations(prev => prev.map(a => a.id === annId ? { ...a, messages: history.filter(message => message.role === 'user' || message.role === 'assistant').map(message => ({ id: message.id, role: message.role === 'assistant' ? 'ai' : 'user', content: message.content })) } : a))
+        setAnnotations(prev => prev.map(a => a.id === annId ? { ...a, messages: displayHistory } : a))
       } catch (error) {
         setNotice(error instanceof Error ? error.message : 'AI 请求失败')
       } finally {
@@ -869,17 +1009,17 @@ export default function App() {
                   top: pendingComposerTop,
                 }}
               >
-                <input
+                <textarea
                   ref={noteRef}
-                  type="text"
+                  rows={1}
                   value={noteVal}
-                  onChange={e => setNoteVal(e.target.value)}
+                  onChange={e => { setNoteVal(e.target.value); resizeComposer(e.currentTarget) }}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && noteVal.trim()) handleNoteSubmit()
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && noteVal.trim()) { e.preventDefault(); handleNoteSubmit() }
                     if (e.key === 'Escape') cancelPending()
                   }}
                   placeholder={pending === 'annotation' ? 'Type here… Enter to submit' : '问 AI… Enter 提交'}
-                  className="reading-placeholder-faint w-full bg-transparent text-sm text-ink outline-none py-1.5"
+                  className="reading-placeholder-faint w-full bg-transparent text-sm text-ink outline-none py-1"
                   style={{
                     fontFamily: 'var(--font-ui)',
                     borderBottom: `1px solid var(--color-${pending === 'annotation' ? 'umber' : 'slate'})`,

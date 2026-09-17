@@ -75,3 +75,4 @@ class MessageResponse(BaseModel):
     status: MessageStatus
     created_at: datetime
     updated_at: datetime
+    ai_run_id: str | None = None

@@ -108,6 +108,7 @@ export type ApiMessage = {
   status: 'pending' | 'streaming' | 'completed' | 'failed' | 'cancelled' | 'partial' | string
   created_at: string
   updated_at: string
+  ai_run_id: string | null
 }
 
 export type ApiAIProvider = {
@@ -123,14 +124,20 @@ export type ApiAIProvider = {
   updated_at: string
 }
 
+export type ApiMCPTool = {
+  name?: string
+  description?: string
+  inputSchema?: Record<string, unknown>
+  enabled?: boolean
+}
+
 export type ApiMCPServer = {
   id: string
   name: string
   endpoint: string
   transport: 'streamable-http' | 'sse'
   has_token: boolean
-  tool_allowlist: string[]
-  capabilities: { tools?: Array<{ name?: string; description?: string }> } | null
+  capabilities: { tools?: ApiMCPTool[] } | null
   enabled: boolean
   created_at: string
   updated_at: string
@@ -149,6 +156,20 @@ export type ApiAIRun = {
   completed_at: string | null
   created_at: string
   updated_at: string
+}
+
+export type ApiAIRunEvent = {
+  sequence: number
+  event_type: string
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export type ApiAIRunTranscriptEntry = {
+  sequence: number
+  entry_type: 'assistant' | 'tool_call' | 'tool_result' | string
+  payload: Record<string, unknown>
+  created_at: string
 }
 
 export type ApiSearchResult = {
@@ -282,17 +303,33 @@ export const api = {
     request<ApiAIProvider>(`/ai/providers/${providerId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   deleteAIProvider: (providerId: string) => request<void>(`/ai/providers/${providerId}`, { method: 'DELETE' }),
   listMCPServers: () => request<ApiMCPServer[]>('/mcp/servers'),
-  createMCPServer: (server: { name: string; endpoint: string; transport: 'streamable-http' | 'sse'; token?: string; tool_allowlist: string[]; enabled?: boolean }) =>
+  createMCPServer: (server: { name: string; endpoint: string; transport: 'streamable-http' | 'sse'; token?: string; enabled?: boolean }) =>
     request<ApiMCPServer>('/mcp/servers', { method: 'POST', body: JSON.stringify(server) }),
-  updateMCPServer: (serverId: string, changes: Partial<Pick<ApiMCPServer, 'name' | 'endpoint' | 'transport' | 'tool_allowlist' | 'enabled'>> & { token?: string }) =>
+  updateMCPServer: (serverId: string, changes: Partial<Pick<ApiMCPServer, 'name' | 'endpoint' | 'transport' | 'enabled'>> & { token?: string }) =>
     request<ApiMCPServer>(`/mcp/servers/${serverId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   deleteMCPServer: (serverId: string) => request<void>(`/mcp/servers/${serverId}`, { method: 'DELETE' }),
-  discoverMCPTools: (serverId: string) => request<Array<{ name?: string; description?: string }>>(`/mcp/servers/${serverId}/tools`, { method: 'POST' }),
+  discoverMCPTools: (serverId: string) => request<ApiMCPTool[]>(`/mcp/servers/${serverId}/tools`, { method: 'POST' }),
+  updateMCPTool: (serverId: string, toolName: string, enabled: boolean) => request<{ server_id: string; tool_name: string; enabled: boolean }>(`/mcp/servers/${serverId}/tools/${encodeURIComponent(toolName)}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
   searchBook: (bookId: string, query: string, chapterId?: string, limit = 6) =>
     request<ApiSearchResult[]>(`/books/${bookId}/search`, { method: 'POST', body: JSON.stringify({ book_id: bookId, query, chapter_id: chapterId, limit }) }),
   createAIRun: (bookId: string, conversationId: string, payload: { content: string; client_message_id?: string; provider_id?: string; model?: string; chapter_id?: string; selection?: string }) =>
     request<ApiAIRun>(`/books/${bookId}/conversations/${conversationId}/runs`, { method: 'POST', body: JSON.stringify(payload) }),
   getAIRun: (runId: string) => request<ApiAIRun>(`/ai/runs/${runId}`),
+  getAIRunTranscript: (runId: string) => request<ApiAIRunTranscriptEntry[]>(`/ai/runs/${runId}/transcript`),
+  subscribeAIRunEvents: (runId: string, handlers: { onEvent?: (event: ApiAIRunEvent) => void; onError?: () => void }, after = 0) => {
+    const source = new EventSource(`${API_BASE_URL}/ai/runs/${encodeURIComponent(runId)}/events?after=${after}`, { withCredentials: true })
+    const eventTypes = ['run_started', 'text_delta', 'thinking_delta', 'tool_call_started', 'tool_call_completed', 'tool_disabled', 'tool_deadline_exceeded', 'tool_limit_reached', 'run_completed', 'failed', 'partial', 'cancelled']
+    eventTypes.forEach(eventType => source.addEventListener(eventType, event => {
+      try {
+        const message = event as MessageEvent<string>
+        handlers.onEvent?.({ sequence: Number(message.lastEventId || 0), event_type: eventType, payload: JSON.parse(message.data || '{}'), created_at: new Date().toISOString() })
+      } catch {
+        // Ignore malformed event payloads; the polling status remains authoritative.
+      }
+    }))
+    source.onerror = () => handlers.onError?.()
+    return source
+  },
   cancelAIRun: (runId: string) => request<ApiAIRun>(`/ai/runs/${runId}/cancel`, { method: 'POST' }),
 }
 

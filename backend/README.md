@@ -38,8 +38,8 @@
 - `GET /api/v1/ai/runs/{run_id}`、`POST /api/v1/ai/runs/{run_id}/cancel`：查看或取消运行
 - `GET /api/v1/ai/runs/{run_id}/events`：SSE 事件流，支持 `Last-Event-ID` 或 `after` 续传
 - `GET/POST/PATCH/DELETE /api/v1/mcp/servers`：配置当前用户的 MCP Server（Token 只返回 `has_token`）
-- `POST /api/v1/mcp/servers/{server_id}/tools`：通过服务端发现并筛选 allowlist 中的只读工具
-- `POST /api/v1/mcp/servers/{server_id}/tools/call`：调用 allowlist 中的只读工具并写入审计日志
+- `POST /api/v1/mcp/servers/{server_id}/tools`：通过服务端发现并筛选只读工具
+- `POST /api/v1/mcp/servers/{server_id}/tools/call`：调用只读工具并写入审计日志
 - `GET /api/v1/mcp/servers/{server_id}/logs`：读取当前用户的 MCP 调用日志
 - `GET /api/v1/export`（或 `/api/v1/data/export`）：导出当前用户数据为 UTF-8 JSON 下载；原始文件以 Base64 包含在导出中，Provider/MCP 密钥永不导出
 - `POST /api/v1/import`（或 `/api/v1/data/import`）：导入 JSON 请求体或 multipart 的 `file`；按当前用户的文件 SHA-256 去重并返回导入统计
@@ -52,9 +52,11 @@ Note 内容最多 100,000 个字符，消息内容最多 20,000 个字符。服�
 
 阶段 6 需要 PostgreSQL 安装并启用 PGroonga（迁移 `0007_ai_gateway` 会显式创建扩展和索引）。AI Provider 支持 OpenAI、Anthropic 和 Ollama-compatible；API Key 使用服务端 Fernet 密文保存，任何响应和日志都不会返回明文。运行事件持久化后通过 SSE 增量发送，断线可按事件序号续传；服务重启会将未完成运行标记为 `partial` 或 `failed`。
 
+AI 运行会在开始时冻结启用的 MCP 工具快照，并支持 OpenAI `tool_calls` 与 Anthropic `tool_use` 的流式解析和多轮调用。每次工具调用都会写入 transcript、`MCPCallLog` 和 `tool_call_started/completed` 事件；同一 conversation 中历史工具调用的脱敏结果、状态和失败原因会作为不可信外部资料加入后续 AI 上下文。工具资料没有独立的条数或字符额度，只受总上下文长度限制；单条记录放不下时会保留能够容纳的最大预览。工具调用数量、轮次和 deadline 可通过 `AI_TOOL_MAX_CALLS`、`AI_TOOL_MAX_ROUNDS`、`AI_TOOL_DEADLINE_SECONDS` 控制。
+
 错误统一为 `{ "error": { "code": "...", "message": "...", "details": [...] } }`。开发环境可使用 `COOKIE_SECURE=false`；生产环境必须使用 HTTPS 并设置 `COOKIE_SECURE=true`。
 
-MCP 请求只由服务端发起，支持 Streamable HTTP 和 SSE。配置时仅允许 HTTPS（开发环境可使用 localhost），每次连接会重新解析域名并拒绝内网、环回、链路本地和云元数据地址，同时禁用重定向。服务器 Token 使用与 AI Provider 相同的 Fernet 加密存储，响应和日志不会返回 Token。工具调用必须同时出现在该 Server 的 allowlist 中且通过只读名称检查；MCP 永远不会获得写入本应用数据库的接口权限。调用受超时、响应大小和并发限制，`mcp_call_logs` 按用户永久保留。
+MCP 请求只由服务端发起，支持 Streamable HTTP 和 SSE。配置时仅允许 HTTPS（开发环境可使用 localhost），每次连接会重新解析域名并拒绝内网、环回、链路本地和云元数据地址，同时禁用重定向。服务器 Token 使用与 AI Provider 相同的 Fernet 加密存储，响应和日志不会返回 Token。工具发现和调用仅允许只读工具，并可额外受服务端 `MCP_ALLOWED_TOOLS` 限制；MCP 永远不会获得写入本应用数据库的接口权限。调用受超时、响应大小和并发限制，`mcp_call_logs` 按用户永久保留。
 
 ## 阶段 8 运维
 

@@ -49,6 +49,7 @@ class AIRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -57,6 +58,8 @@ class AIRun(Base):
     user_message = relationship("Message", foreign_keys=[user_message_id])
     assistant_message = relationship("Message", foreign_keys=[assistant_message_id])
     events = relationship("AIRunEvent", back_populates="run", cascade="all, delete-orphan", order_by="AIRunEvent.sequence")
+    tool_bindings = relationship("AIRunToolBinding", back_populates="run", cascade="all, delete-orphan", order_by="AIRunToolBinding.created_at")
+    transcript_entries = relationship("AIRunTranscriptEntry", back_populates="run", cascade="all, delete-orphan", order_by="AIRunTranscriptEntry.sequence")
 
 
 class AIRunEvent(Base):
@@ -74,3 +77,39 @@ class AIRunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     run = relationship("AIRun", back_populates="events")
+
+
+class AIRunToolBinding(Base):
+    __tablename__ = "ai_run_tool_bindings"
+    __table_args__ = (
+        UniqueConstraint("run_id", "exposed_tool_name", name="uq_ai_run_tool_binding_name"),
+        Index("ix_ai_run_tool_bindings_run_id", "run_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_runs.id", ondelete="CASCADE"), nullable=False)
+    exposed_tool_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mcp_server_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    tool_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_schema: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    run = relationship("AIRun", back_populates="tool_bindings")
+
+
+class AIRunTranscriptEntry(Base):
+    __tablename__ = "ai_run_transcript_entries"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_ai_run_transcript_run_sequence"),
+        Index("ix_ai_run_transcript_run_id", "run_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("ai_runs.id", ondelete="CASCADE"), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    run = relationship("AIRun", back_populates="transcript_entries")

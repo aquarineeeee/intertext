@@ -16,3 +16,13 @@ def test_user_and_book_children_have_database_cascade() -> None:
 def test_annotation_deletion_cascades_to_conversations() -> None:
     foreign_keys = {foreign_key.target_fullname: foreign_key.ondelete for foreign_key in Base.metadata.tables["conversations"].foreign_keys}
     assert foreign_keys["annotations.id"] == "CASCADE"
+
+
+def test_mcp_server_names_are_unique_per_user() -> None:
+    constraints = Base.metadata.tables["mcp_servers"].constraints
+    unique_columns = {
+        tuple(column.name for column in constraint.columns)
+        for constraint in constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    assert ("user_id", "name") in unique_columns

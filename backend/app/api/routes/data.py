@@ -83,7 +83,7 @@ def _export_user(db: DbSession, user: User) -> dict:
     providers = [_row(provider, ("id", "name", "provider_type", "base_url", "model", "enabled", "created_at", "updated_at")) for provider in db.scalars(select(AIProvider).where(AIProvider.user_id == user.id)).all()]
     # MCP configuration is portable except for its encrypted token. Call logs are
     # deliberately omitted because they can contain arbitrary remote response data.
-    mcp_servers = [_row(server, ("id", "name", "endpoint", "transport", "tool_allowlist", "capabilities", "enabled", "created_at", "updated_at")) for server in db.scalars(select(MCPServer).where(MCPServer.user_id == user.id)).all()]
+    mcp_servers = [_row(server, ("id", "name", "endpoint", "transport", "capabilities", "enabled", "created_at", "updated_at")) for server in db.scalars(select(MCPServer).where(MCPServer.user_id == user.id)).all()]
     return {"format": "intertext-export", "schema_version": 2, "exported_at": datetime.utcnow().isoformat() + "Z", "user": {"email": user.email, "display_name": user.display_name}, "books": book_rows, "ai_providers": providers, "mcp_servers": mcp_servers}
 
 
@@ -255,7 +255,7 @@ def _import_data(db: DbSession, user: User, payload: dict) -> dict:
                     raise AppError(422, "invalid_export", "导出文件包含无效的 MCP 传输类型")
                 endpoint = str(raw_server.get("endpoint") or "")
                 validate_endpoint(endpoint, get_settings().environment, resolve_dns=get_settings().environment != "development")
-                db.add(MCPServer(id=_new_id(raw_server.get("id"), db, MCPServer), user_id=user.id, name=str(raw_server.get("name") or "Imported")[:100], endpoint=endpoint, transport=transport, tool_allowlist=list(raw_server.get("tool_allowlist") or []), capabilities=raw_server.get("capabilities"), enabled=bool(raw_server.get("enabled", True))))
+                db.add(MCPServer(id=_new_id(raw_server.get("id"), db, MCPServer), user_id=user.id, name=str(raw_server.get("name") or "Imported")[:100], endpoint=endpoint, transport=transport, capabilities=raw_server.get("capabilities"), enabled=bool(raw_server.get("enabled", True))))
         db.commit()
     except Exception:
         db.rollback()

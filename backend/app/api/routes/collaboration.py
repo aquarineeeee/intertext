@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Response
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
@@ -7,6 +7,7 @@ from app.api.deps import get_current_user
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models.book import Book
+from app.models.ai import AIRun
 from app.models.collaboration import Conversation, Message, Note
 from app.models.document import Annotation
 from app.models.user import User
@@ -134,9 +135,34 @@ def delete_conversation(book_id: str, conversation_id: str, db: DbSession = Depe
 
 
 @router.get("/{book_id}/conversations/{conversation_id}/messages", response_model=list[MessageResponse])
-def list_messages(book_id: str, conversation_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> list[Message]:
+def list_messages(book_id: str, conversation_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> list[dict]:
     _conversation(db, book_id, conversation_id, user)
-    return list(db.scalars(select(Message).where(Message.conversation_id == conversation_id, Message.user_id == user.id).order_by(Message.created_at, Message.id)).all())
+    role_rank = case(
+        (Message.role == "user", 0),
+        (Message.role == "assistant", 1),
+        else_=2,
+    )
+    messages = list(db.scalars(select(Message).where(Message.conversation_id == conversation_id, Message.user_id == user.id).order_by(Message.created_at, role_rank, Message.id)).all())
+    assistant_ids = [message.id for message in messages if message.role == "assistant"]
+    run_by_message = {
+        run.assistant_message_id: run.id
+        for run in db.scalars(select(AIRun).where(AIRun.assistant_message_id.in_(assistant_ids))).all()
+    } if assistant_ids else {}
+    return [
+        {
+            "id": message.id,
+            "conversation_id": message.conversation_id,
+            "role": message.role,
+            "content": message.content,
+            "client_message_id": message.client_message_id,
+            "model": message.model,
+            "status": message.status,
+            "created_at": message.created_at,
+            "updated_at": message.updated_at,
+            "ai_run_id": run_by_message.get(message.id),
+        }
+        for message in messages
+    ]
 
 
 @router.post("/{book_id}/conversations/{conversation_id}/messages", response_model=MessageResponse, status_code=201)
