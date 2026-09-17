@@ -37,7 +37,7 @@ class AuthResponse(BaseModel):
     user: UserResponse
 
 
-CompanionStyle = Literal["guided", "discussion", "concise"]
+CompanionStyle = Literal["guided", "discussion", "concise", "custom"]
 
 
 class UserSettingsResponse(BaseModel):

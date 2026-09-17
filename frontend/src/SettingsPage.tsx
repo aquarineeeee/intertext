@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type ApiAIProvider, type ApiMCPServer, type ApiMCPTool, type ApiReadingStats, type ApiUser } from './api'
+import { api, type ApiAIProvider, type ApiMCPServer, type ApiMCPTool, type ApiReadingStats, type ApiUser, type CompanionStyle } from './api'
 import { palette } from './theme'
 
 type SectionId = 'reading-log' | 'appearance' | 'companion' | 'data' | 'account'
@@ -10,11 +10,6 @@ const sections: { id: SectionId; label: string }[] = [
 ]
 const heatColors = ['#E7F0EA', '#CFE2D4', '#A9CBB3', '#78AC89', '#4F8B67']
 const emptyStats: ApiReadingStats = { day_streak: 0, active_days_this_month: 0, books_finished: 0, activity: [] }
-const stylePrompts = {
-  guided: 'You are a thoughtful reading guide. Lead with open-ended questions, invite close reading, and help the reader discover their own interpretation before offering yours.',
-  discussion: 'You are a thoughtful reading companion. Engage deeply with texts, offer interpretive perspectives, and ask questions that open new lines of thought rather than closing them.',
-  concise: 'You are a concise reading companion. Answer directly in a few focused sentences, cite the relevant text when useful, and avoid unnecessary preamble.',
-}
 const providerDefaults: Record<Exclude<Provider, 'others'>, { baseUrl: string; model: string }> = {
   openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   anthropic: { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-3-5-sonnet-latest' },
@@ -43,7 +38,7 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) { retur
 export default function SettingsPage({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [active, setActive] = useState<SectionId>('reading-log')
   const [typeface, setTypeface] = useState('Serif'); const [textSize, setTextSize] = useState(16); const [lineHeight, setLineHeight] = useState(1.5); const [mode, setMode] = useState('Day')
-  const [companionStyle, setCompanionStyle] = useState('discussion'); const [prompt, setPrompt] = useState(stylePrompts.discussion)
+  const [companionStyle, setCompanionStyle] = useState<CompanionStyle>('discussion'); const [prompt, setPrompt] = useState(''); const [promptNotice, setPromptNotice] = useState(''); const [promptSaving, setPromptSaving] = useState(false)
   const [advanced, setAdvanced] = useState(false); const [provider, setProvider] = useState<Provider>('ollama'); const [apiKey, setApiKey] = useState(''); const [baseUrl, setBaseUrl] = useState(providerDefaults.ollama.baseUrl); const [model, setModel] = useState(providerDefaults.ollama.model); const [interfaceFormat, setInterfaceFormat] = useState<'openai' | 'anthropic' | 'ollama'>('openai'); const [providerName, setProviderName] = useState('My provider'); const [providerNotice, setProviderNotice] = useState(''); const [providerId, setProviderId] = useState<string | null>(null); const [providerHasKey, setProviderHasKey] = useState(false); const [providerSaving, setProviderSaving] = useState(false)
   const [mcpServers, setMcpServers] = useState<ApiMCPServer[]>([]); const [mcpLoading, setMcpLoading] = useState(false); const [mcpNotice, setMcpNotice] = useState(''); const [mcpAdding, setMcpAdding] = useState(false); const [mcpSaving, setMcpSaving] = useState(false); const [mcpRefreshing, setMcpRefreshing] = useState<Record<string, boolean>>({}); const [mcpName, setMcpName] = useState(''); const [mcpEndpoint, setMcpEndpoint] = useState(''); const [mcpTransport, setMcpTransport] = useState<ApiMCPServer['transport']>('streamable-http'); const [mcpToken, setMcpToken] = useState('')
   const [stats, setStats] = useState<ApiReadingStats>(emptyStats); const [statsLoading, setStatsLoading] = useState(true); const [shareStats, setShareStats] = useState(false); const [user, setUser] = useState<ApiUser | null>(null); const [providers, setProviders] = useState<ApiAIProvider[]>([])
@@ -55,8 +50,21 @@ export default function SettingsPage({ onNavigate }: { onNavigate: (path: string
   const selectProvider = (value: Provider) => { setProvider(value); setProviderNotice(''); const existing = value === 'others' ? providers.find(item => item.provider_type === 'custom') : providers.find(item => item.provider_type === value); setProviderId(existing?.id || null); setProviderHasKey(Boolean(existing?.has_api_key)); setApiKey(''); if (existing) { setBaseUrl(existing.base_url || (value === 'others' ? '' : providerDefaults[value].baseUrl)); setModel(existing.model); setProviderName(existing.name); if (existing.interface_format) setInterfaceFormat(existing.interface_format) } else if (value === 'others') { setBaseUrl(''); setModel(''); setProviderName('My provider'); setInterfaceFormat('openai') } else { setBaseUrl(providerDefaults[value].baseUrl); setModel(providerDefaults[value].model); setProviderName(value[0].toUpperCase() + value.slice(1)) } }
   const saveProvider = async () => { const needsKey = provider === 'openai' || provider === 'anthropic'; if ((needsKey && !apiKey.trim() && !providerHasKey) || !model.trim() || !baseUrl.trim()) { setProviderNotice(needsKey && !apiKey.trim() && !providerHasKey ? '请填写 API Key' : '请填写 Model 和 Base URL'); return }; setProviderSaving(true); try { const payload = { name: provider === 'others' ? (providerName.trim() || 'My provider') : providerName, provider_type: provider === 'others' ? 'custom' as const : provider, ...(provider === 'others' ? { interface_format: interfaceFormat } : {}), model: model.trim(), base_url: baseUrl.trim(), ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}) }; const saved = providerId ? await api.updateAIProvider(providerId, payload) : await api.createAIProvider(payload); setProviders(current => providerId ? current.map(item => item.id === saved.id ? saved : item) : [...current, saved]); setProviderId(saved.id); setProviderHasKey(saved.has_api_key); setProviderNotice('已保存'); setApiKey('') } catch (error) { setProviderNotice(error instanceof Error ? error.message : '保存失败') } finally { setProviderSaving(false) } }
   const signOut = async () => { await api.logout().catch(() => undefined); onNavigate('/') }
-  const chooseStyle = (value: string) => { const style = value as keyof typeof stylePrompts; setCompanionStyle(style); setPrompt(stylePrompts[style]); void api.updateUserSettings({ style, prompt: stylePrompts[style] }) }
-  const updatePrompt = (value: string) => { setPrompt(value) }
+  const chooseStyle = async (style: CompanionStyle) => {
+    const previousStyle = companionStyle
+    setCompanionStyle(style); setPromptNotice('')
+    if (style === 'custom') return
+    try { const settings = await api.updateUserSettings({ style }); setPrompt(settings.prompt) }
+    catch (error) { setCompanionStyle(previousStyle); setPromptNotice(error instanceof Error ? error.message : '保存失败') }
+  }
+  const saveCustomPrompt = async () => {
+    const customPrompt = prompt.trim()
+    if (!customPrompt) { setPromptNotice('请输入自定义提示词'); return }
+    setPromptSaving(true); setPromptNotice('')
+    try { const settings = await api.updateUserSettings({ style: 'custom', prompt: customPrompt }); setPrompt(settings.prompt); setPromptNotice('已保存') }
+    catch (error) { setPromptNotice(error instanceof Error ? error.message : '保存失败') }
+    finally { setPromptSaving(false) }
+  }
   const resetMcpForm = () => { setMcpName(''); setMcpEndpoint(''); setMcpTransport('streamable-http'); setMcpToken(''); setMcpAdding(false) }
   const refreshMcpTools = async (serverId: string): Promise<ApiMCPTool[] | null> => {
     setMcpRefreshing(current => ({ ...current, [serverId]: true })); setMcpNotice('')
@@ -93,8 +101,9 @@ export default function SettingsPage({ onNavigate }: { onNavigate: (path: string
     <section id="appearance" ref={element => { refs.current.appearance = element }} className="settings-section"><SectionHeading>Appearance</SectionHeading><Row label="Typeface"><Seg options={['Serif', 'Sans', 'Mono']} value={typeface} onChange={setTypeface} /></Row><Divider /><Row label="Text size"><div className="settings-range"><span>A</span><input type="range" min={12} max={24} value={textSize} onChange={event => setTextSize(+event.target.value)} /><b>A</b><em>{textSize}px</em></div></Row><Divider /><Row label="Line height"><div className="settings-range"><span>Compact</span><input type="range" min={1} max={2} step={0.05} value={lineHeight} onChange={event => setLineHeight(+event.target.value)} /><span>Airy</span></div></Row><Divider /><Row label="Mode"><Seg options={['Day', 'Night']} value={mode} onChange={setMode} /></Row></section><Divider />
     <section id="companion" ref={element => { refs.current['companion'] = element }} className="settings-section">
       <SectionHeading>Companion</SectionHeading>
-      <Row label="Style" alignTop><div className="settings-options">{[['guided', 'Guided', 'Leads with questions and prompts'], ['discussion', 'Discussion', 'Engages as a reading partner'], ['concise', 'Concise', 'Brief, focused responses only']].map(([value, label, description]) => <button key={value} onClick={() => chooseStyle(value)} className={companionStyle === value ? 'is-selected' : ''}><span><b>{label}</b><small>{description}</small></span><strong>›</strong></button>)}</div></Row>
-      <Divider /><div className="settings-prompt"><label>Preset prompt</label><textarea value={prompt} onChange={event => updatePrompt(event.target.value)} onBlur={() => void api.updateUserSettings({ prompt })} rows={4} /></div><Divider />
+      <Row label="Style" alignTop><div className="settings-options">{[['guided', 'Guided', 'Leads with questions and prompts'], ['discussion', 'Discussion', 'Engages as a reading partner'], ['concise', 'Concise', 'Brief, focused responses only'], ['custom', 'Custom', 'Use your own system prompt']].map(([value, label, description]) => <button key={value} onClick={() => void chooseStyle(value as CompanionStyle)} className={companionStyle === value ? 'is-selected' : ''}><span><b>{label}</b><small>{description}</small></span><strong>›</strong></button>)}</div></Row>
+      {companionStyle === 'custom' && <><Divider /><div className="settings-prompt"><label htmlFor="custom-companion-prompt">Custom prompt</label><textarea id="custom-companion-prompt" value={prompt} onChange={event => { setPrompt(event.target.value); setPromptNotice('') }} rows={4} maxLength={20000} placeholder="Describe how you want your reading companion to respond…" /><div className="settings-prompt-actions"><span className={promptNotice === '已保存' ? 'is-success' : ''}>{promptNotice}</span><button onClick={() => void saveCustomPrompt()} disabled={promptSaving}>{promptSaving ? 'Saving…' : 'Save'}</button></div></div></>}
+      <Divider />
       <div className="settings-advanced"><button onClick={() => setAdvanced(value => !value)} className="settings-advanced-toggle"><span className={advanced ? 'is-open' : ''}>›</span>Advanced</button>
       {advanced && <div className="settings-advanced-body"><Row label="Provider" alignTop><div className="settings-provider-list">{(['openai', 'anthropic', 'ollama', 'others'] as Provider[]).map(value => <button key={value} onClick={() => selectProvider(value)} className={provider === value ? 'is-selected' : ''}>{value[0].toUpperCase() + value.slice(1)}</button>)}</div></Row><Divider />
       {provider === 'others' && <><Row label="Name"><input className="settings-input" value={providerName} onChange={event => setProviderName(event.target.value)} /></Row><Divider /><Row label="Interface format"><select className="settings-input" value={interfaceFormat} onChange={event => setInterfaceFormat(event.target.value as typeof interfaceFormat)}><option value="openai">OpenAI compatible</option><option value="anthropic">Anthropic compatible</option><option value="ollama">Ollama compatible</option></select></Row><Divider /></>}

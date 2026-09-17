@@ -19,14 +19,16 @@ from app.db.session import get_db
 from app.models.session import Session
 from app.models.user import User
 from app.schemas.auth import AuthResponse, LoginRequest, RegisterRequest, UserResponse, UserSettingsResponse, UserSettingsUpdate
+from app.services.companion import DEFAULT_COMPANION_PROMPTS
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-DEFAULT_PROMPTS = {
-    "guided": "You are a thoughtful reading guide. Lead with open-ended questions, invite close reading, and help the reader discover their own interpretation before offering yours.",
-    "discussion": "You are a thoughtful reading companion. Engage deeply with texts, offer interpretive perspectives, and ask questions that open new lines of thought rather than closing them.",
-    "concise": "You are a concise reading companion. Answer directly in a few focused sentences, cite the relevant text when useful, and avoid unnecessary preamble.",
-}
+def user_settings_response(user: User) -> dict[str, str]:
+    style = user.companion_style or "discussion"
+    prompt = (user.companion_prompt or "").strip()
+    if style != "custom" and prompt in DEFAULT_COMPANION_PROMPTS.values():
+        prompt = ""
+    return {"style": style, "prompt": prompt}
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -102,17 +104,19 @@ def me(user: User = Depends(get_current_user)) -> User:
 
 @router.get("/settings", response_model=UserSettingsResponse)
 def get_user_settings(user: User = Depends(get_current_user)) -> dict[str, str]:
-    style = user.companion_style or "discussion"
-    return {"style": style, "prompt": user.companion_prompt or DEFAULT_PROMPTS[style]}
+    return user_settings_response(user)
 
 
 @router.patch("/settings", response_model=UserSettingsResponse)
 def update_settings(payload: UserSettingsUpdate, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> dict[str, str]:
-    if payload.style is not None:
-        user.companion_style = payload.style
-        if payload.prompt is None and user.companion_prompt is None:
-            user.companion_prompt = DEFAULT_PROMPTS[payload.style]
-    if payload.prompt is not None:
-        user.companion_prompt = payload.prompt.strip()
+    style = payload.style or user.companion_style or "discussion"
+    if style == "custom":
+        prompt = payload.prompt.strip() if payload.prompt is not None else (user.companion_prompt or "").strip()
+        if not prompt or (payload.prompt is None and prompt in DEFAULT_COMPANION_PROMPTS.values()):
+            raise AppError(422, "custom_prompt_required", "自定义提示词不能为空")
+        user.companion_prompt = prompt
+    elif user.companion_prompt in DEFAULT_COMPANION_PROMPTS.values():
+        user.companion_prompt = None
+    user.companion_style = style
     db.commit()
-    return {"style": user.companion_style or "discussion", "prompt": user.companion_prompt or DEFAULT_PROMPTS[user.companion_style or "discussion"]}
+    return user_settings_response(user)

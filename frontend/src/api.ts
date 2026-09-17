@@ -6,7 +6,8 @@ export type ApiUser = {
   created_at: string
 }
 
-export type ApiUserSettings = { style: 'guided' | 'discussion' | 'concise'; prompt: string }
+export type CompanionStyle = 'guided' | 'discussion' | 'concise' | 'custom'
+export type ApiUserSettings = { style: CompanionStyle; prompt: string }
 
 export type ApiBook = {
   id: string

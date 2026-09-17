@@ -70,3 +70,25 @@ def test_validation_error_is_uniform(client: TestClient) -> None:
     response = client.post("/api/v1/auth/register", json={"email": "not-an-email", "password": "short"})
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_custom_companion_prompt_settings(client: TestClient) -> None:
+    client.post("/api/v1/auth/register", json={"email": "reader@example.com", "password": "password-123"})
+    assert client.get("/api/v1/auth/settings").json() == {"style": "discussion", "prompt": ""}
+
+    missing_prompt = client.patch("/api/v1/auth/settings", json={"style": "custom", "prompt": "  "})
+    assert missing_prompt.status_code == 422
+    assert missing_prompt.json()["error"]["code"] == "custom_prompt_required"
+
+    saved = client.patch("/api/v1/auth/settings", json={"style": "custom", "prompt": "  Reply like a poet.  "})
+    assert saved.status_code == 200
+    assert saved.json() == {"style": "custom", "prompt": "Reply like a poet."}
+    assert client.get("/api/v1/auth/settings").json() == saved.json()
+
+    preset = client.patch("/api/v1/auth/settings", json={"style": "guided"})
+    assert preset.status_code == 200
+    assert preset.json() == {"style": "guided", "prompt": "Reply like a poet."}
+
+    restored = client.patch("/api/v1/auth/settings", json={"style": "custom"})
+    assert restored.status_code == 200
+    assert restored.json() == saved.json()
