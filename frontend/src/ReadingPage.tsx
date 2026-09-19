@@ -777,6 +777,11 @@ export default function App() {
         const conversation = await api.createConversation(book.id, '阅读讨论', annotation.id)
         const item: Ann = { id: annotation.id, type: 'discussion', paragraphIndex: selection.paragraphIndex, selectedText: selection.text, note: '', messages: [{ id: uid(), role: 'user', content }], expanded: false, chapterId, conversationId: conversation.id }
         setAnnotations(prev => [...prev, item])
+        // The persisted discussion now owns this highlight. Clear the temporary
+        // selection overlay so renderParagraph does not paint the same text twice
+        // while the AI run is streaming.
+        setPendingSelection(null)
+        setPendingType(null)
         setConversations(prev => [...prev, conversation])
         setAiTypingId(annotation.id)
         const run = await api.createAIRun(book.id, conversation.id, { content, chapter_id: chapterId, selection: selection.text, client_message_id: uid() })
