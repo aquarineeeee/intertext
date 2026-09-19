@@ -48,3 +48,11 @@ class UserSettingsResponse(BaseModel):
 class UserSettingsUpdate(BaseModel):
     style: CompanionStyle | None = None
     prompt: str | None = Field(default=None, max_length=20_000)
+
+
+class ActiveProviderResponse(BaseModel):
+    provider_id: str | None
+
+
+class ActiveProviderUpdate(BaseModel):
+    provider_id: str | None = None

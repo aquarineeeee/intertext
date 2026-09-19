@@ -716,6 +716,7 @@ export default function App() {
     if (action === 'bookmark') {
       if (!book || !chapterId) return
       void api.createExcerpt(book.id, { chapter_id: chapterId, start_offset: sel.startOffset, end_offset: sel.endOffset, selected_text: sel.text }).then(excerpt => {
+        setNotice(null)
         const id = excerpt.id
         setAnnotations(prev => [...prev, { id, type: 'bookmark', paragraphIndex: sel.paragraphIndex, selectedText: sel.text, note: '', messages: [], expanded: false, chapterId }])
         setSel(null)
@@ -758,6 +759,7 @@ export default function App() {
     setPendingType(type)
     if (type === 'annotation') {
       void api.createAnnotation(book.id, { chapter_id: chapterId, start_offset: selection.startOffset, end_offset: selection.endOffset, selected_text: selection.text, note_content: content, color: 'umber' }).then(annotation => {
+        setNotice(null)
         const item: Ann = { id: annotation.id, type: 'annotation', paragraphIndex: selection.paragraphIndex, selectedText: selection.text, note: content, messages: [], expanded: false, chapterId }
         setAnnotations(prev => [...prev, item])
         setPendingSelection(null)
@@ -786,13 +788,17 @@ export default function App() {
         setAiTypingId(annotation.id)
         const run = await api.createAIRun(book.id, conversation.id, { content, chapter_id: chapterId, selection: selection.text, client_message_id: uid() })
         watchRun(run.id, annotation.id)
-        let status = run.status
-        for (let attempt = 0; attempt < 125 && ['queued', 'running'].includes(status); attempt += 1) {
-          await new Promise(resolve => window.setTimeout(resolve, 1000))
-          status = (await api.getAIRun(run.id)).status
+        let currentRun = run
+        for (let attempt = 0; attempt < 24 && ['queued', 'running'].includes(currentRun.status); attempt += 1) {
+          await new Promise(resolve => window.setTimeout(resolve, 5000))
+          currentRun = await api.getAIRun(run.id)
+        }
+        if (['failed', 'partial', 'cancelled'].includes(currentRun.status)) {
+          throw new Error(currentRun.error_message || 'AI 运行失败')
         }
         const history = await api.listMessages(book.id, conversation.id)
         const displayHistory = await toDisplayMessages(history)
+        setNotice(null)
         setMessages(prev => ({ ...prev, [conversation.id]: history }))
         setAnnotations(prev => prev.map(current => current.id === annotation.id ? { ...current, messages: displayHistory } : current))
         setPendingSelection(null)
@@ -821,13 +827,17 @@ export default function App() {
       try {
         const run = await api.createAIRun(book.id, ann.conversationId!, { content, chapter_id: chapterId, selection: ann.selectedText, client_message_id: uid() })
         watchRun(run.id, annId)
-        let status = run.status
-        for (let attempt = 0; attempt < 125 && ['queued', 'running'].includes(status); attempt += 1) {
-          await new Promise(resolve => window.setTimeout(resolve, 1000))
-          status = (await api.getAIRun(run.id)).status
+        let currentRun = run
+        for (let attempt = 0; attempt < 24 && ['queued', 'running'].includes(currentRun.status); attempt += 1) {
+          await new Promise(resolve => window.setTimeout(resolve, 5000))
+          currentRun = await api.getAIRun(run.id)
+        }
+        if (['failed', 'partial', 'cancelled'].includes(currentRun.status)) {
+          throw new Error(currentRun.error_message || 'AI 运行失败')
         }
         const history = await api.listMessages(book.id, ann.conversationId!)
         const displayHistory = await toDisplayMessages(history)
+        setNotice(null)
         setMessages(prev => ({ ...prev, [ann.conversationId!]: history }))
         setAnnotations(prev => prev.map(a => a.id === annId ? { ...a, messages: displayHistory } : a))
       } catch (error) {

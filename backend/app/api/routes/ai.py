@@ -42,6 +42,10 @@ def create_provider(payload: AIProviderCreate, db: DbSession = Depends(get_db), 
         db.rollback()
         raise AppError(409, "provider_exists", "Provider 名称已存在") from None
     db.refresh(item)
+    if user.active_provider_id is None:
+        user.active_provider_id = item.id
+        db.commit()
+        db.refresh(item)
     return _provider_view(item)
 
 
@@ -129,19 +133,31 @@ async def stream_events(run_id: str, after: int = Query(default=0, ge=0), last_e
     async def generate():
         nonlocal cursor
         idle = 0
-        while idle < 30:
-            rows = list(db.scalars(select(AIRunEvent).where(AIRunEvent.run_id == run_id, AIRunEvent.sequence > cursor).order_by(AIRunEvent.sequence)).all())
-            if rows:
-                idle = 0
-                for event in rows:
-                    cursor = event.sequence
-                    yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {json.dumps(event.payload, ensure_ascii=False)}\n\n"
-                db.expire(run)
-                if run.status in ("completed", "failed", "cancelled", "partial"): return
-            else:
-                idle += 1
-                if idle == 15:
-                    yield ": heartbeat\n\n"
-                await asyncio.sleep(1)
+        # The request-scoped SQLAlchemy session is closed as soon as this
+        # StreamingResponse is returned. Keep the stream independent of that
+        # session and open a short-lived session for each poll instead.
+        from app.db.session import SessionLocal
+        try:
+            while idle < 30:
+                stream_db = SessionLocal()
+                try:
+                    rows = list(stream_db.scalars(select(AIRunEvent).where(AIRunEvent.run_id == run_id, AIRunEvent.sequence > cursor).order_by(AIRunEvent.sequence)).all())
+                    status = stream_db.scalar(select(AIRun.status).where(AIRun.id == run_id))
+                finally:
+                    stream_db.close()
+                if rows:
+                    idle = 0
+                    for event in rows:
+                        cursor = event.sequence
+                        yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {json.dumps(event.payload, ensure_ascii=False)}\n\n"
+                    if status in ("completed", "failed", "cancelled", "partial"): return
+                else:
+                    idle += 1
+                    if idle == 15:
+                        yield ": heartbeat\n\n"
+                    if status in ("completed", "failed", "cancelled", "partial"): return
+                    await asyncio.sleep(1)
+        finally:
+            db.close()
 
     return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

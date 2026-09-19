@@ -60,7 +60,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         client_host = request.client.host if request.client else "unknown"
-        if not request.url.path.endswith("/health") and self._rate_limited(client_host):
+        # Streaming AI event connections are long-lived and the browser may
+        # reconnect them automatically. They are authenticated read-only
+        # streams, so counting each reconnect against the general API budget
+        # can starve normal annotation writes during local development.
+        is_ai_event_stream = request.method == "GET" and request.url.path.startswith("/api/") and request.url.path.endswith("/events")
+        if not request.url.path.endswith("/health") and not is_ai_event_stream and self._rate_limited(client_host):
             return JSONResponse(
                 status_code=429,
                 content={"error": {"code": "rate_limited", "message": "请求过于频繁"}},

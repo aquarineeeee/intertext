@@ -8,6 +8,7 @@ export type ApiUser = {
 
 export type CompanionStyle = 'guided' | 'discussion' | 'concise' | 'custom'
 export type ApiUserSettings = { style: CompanionStyle; prompt: string }
+export type ApiActiveProvider = { provider_id: string | null }
 
 export type ApiBook = {
   id: string
@@ -228,6 +229,8 @@ export const api = {
   me: () => request<ApiUser>('/auth/me'),
   getUserSettings: () => request<ApiUserSettings>('/auth/settings'),
   updateUserSettings: (changes: Partial<ApiUserSettings>) => request<ApiUserSettings>('/auth/settings', { method: 'PATCH', body: JSON.stringify(changes) }),
+  getActiveProvider: () => request<ApiActiveProvider>('/auth/active-provider'),
+  updateActiveProvider: (providerId: string | null) => request<ApiActiveProvider>('/auth/active-provider', { method: 'PATCH', body: JSON.stringify({ provider_id: providerId }) }),
   login: (email: string, password: string) =>
     request<{ user: ApiUser }>('/auth/login', {
       method: 'POST',
@@ -328,7 +331,12 @@ export const api = {
         // Ignore malformed event payloads; the polling status remains authoritative.
       }
     }))
-    source.onerror = () => handlers.onError?.()
+    source.onerror = () => {
+      // EventSource retries automatically. Do not let a failed/expired stream
+      // create an unbounded request loop that consumes the API rate limit.
+      source.close()
+      handlers.onError?.()
+    }
     return source
   },
   cancelAIRun: (runId: string) => request<ApiAIRun>(`/ai/runs/${runId}/cancel`, { method: 'POST' }),

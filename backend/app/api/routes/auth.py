@@ -16,9 +16,10 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
+from app.models.ai import AIProvider
 from app.models.session import Session
 from app.models.user import User
-from app.schemas.auth import AuthResponse, LoginRequest, RegisterRequest, UserResponse, UserSettingsResponse, UserSettingsUpdate
+from app.schemas.auth import ActiveProviderResponse, ActiveProviderUpdate, AuthResponse, LoginRequest, RegisterRequest, UserResponse, UserSettingsResponse, UserSettingsUpdate
 from app.services.companion import DEFAULT_COMPANION_PROMPTS
 
 
@@ -120,3 +121,21 @@ def update_settings(payload: UserSettingsUpdate, db: DbSession = Depends(get_db)
     user.companion_style = style
     db.commit()
     return user_settings_response(user)
+
+
+@router.get("/active-provider", response_model=ActiveProviderResponse)
+def get_active_provider(user: User = Depends(get_current_user)) -> dict[str, str | None]:
+    return {"provider_id": user.active_provider_id}
+
+
+@router.patch("/active-provider", response_model=ActiveProviderResponse)
+def update_active_provider(payload: ActiveProviderUpdate, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> dict[str, str | None]:
+    if payload.provider_id is not None:
+        provider = db.scalar(select(AIProvider).where(AIProvider.id == payload.provider_id, AIProvider.user_id == user.id))
+        if provider is None:
+            raise AppError(404, "provider_not_found", "Provider 不存在")
+        if not provider.enabled:
+            raise AppError(422, "provider_disabled", "不能选择已停用的 Provider")
+    user.active_provider_id = payload.provider_id
+    db.commit()
+    return {"provider_id": user.active_provider_id}

@@ -9,7 +9,7 @@ from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.schemas.ai import AIRunCreate
 from app.models.ai import AIRunToolBinding
-from app.services.ai_gateway import OllamaProvider, parse_anthropic_event, parse_openai_chunk, parse_openai_response, provider_for
+from app.services.ai_gateway import AnthropicProvider, OllamaProvider, parse_anthropic_event, parse_openai_chunk, parse_openai_response, provider_for
 from app.services.ai_runs import _exposed_tool_name, _tool_context_message
 from app.services.context import _prior_tool_results_context
 from app.services.encryption import decrypt_secret, encrypt_secret
@@ -248,3 +248,43 @@ def test_ollama_provider_supports_tool_call_events(monkeypatch: pytest.MonkeyPat
 
     events = asyncio.run(collect())
     assert [(event.kind, event.tool_name, event.arguments) for event in events] == [("tool_call", "memory_search", {"query": "book"})]
+
+
+def test_anthropic_request_has_no_hard_coded_output_token_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    requests = []
+
+    class FakeResponse:
+        status_code = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def aiter_lines(self):
+            yield 'data: {"type":"message_stop"}'
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        def stream(self, *args, **kwargs):
+            requests.append(kwargs["json"])
+            return FakeResponse()
+
+    monkeypatch.setattr("app.services.ai_gateway.httpx.AsyncClient", FakeClient)
+
+    async def collect():
+        return [event async for event in AnthropicProvider("key", "http://anthropic").stream([], "model", 1)]
+
+    import asyncio
+
+    asyncio.run(collect())
+    assert "max_tokens" not in requests[0]

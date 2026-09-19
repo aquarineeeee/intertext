@@ -303,7 +303,7 @@ class AnthropicProvider:
             else:
                 user_messages.append({"role": message["role"], "content": message["content"]})
         headers = {"x-api-key": self.api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-        body: dict[str, Any] = {"model": model, "max_tokens": 4096, "messages": user_messages, "stream": True}
+        body: dict[str, Any] = {"model": model, "messages": user_messages, "stream": True}
         if system:
             body["system"] = system
         if tools:

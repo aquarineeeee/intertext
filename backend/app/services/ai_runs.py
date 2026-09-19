@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -13,14 +14,17 @@ from app.core.exceptions import AppError
 from app.models.ai import AIProvider, AIRun, AIRunEvent, AIRunToolBinding, AIRunTranscriptEntry
 from app.models.collaboration import Conversation, Message
 from app.models.mcp import MCPCallLog, MCPServer, MCPToolConfig
+from app.models.user import User
 from app.services.ai_gateway import ProviderEvent, provider_for
 from app.services.context import ContextBuilder
 from app.services.encryption import decrypt_secret
 from app.services.mcp_client import async_call_tool
 from app.services.mcp_security import redact_secrets
+from app.services.search import search_book
 
 _tasks: dict[str, asyncio.Task] = {}
 _mcp_slots = asyncio.Semaphore(get_settings().mcp_max_concurrent_calls)
+logger = logging.getLogger("intertext.ai_runs")
 
 
 def recover_ai_runs(db: DbSession) -> None:
@@ -256,14 +260,31 @@ async def _execute(run_id: str, user_id: str, conversation_id: str, provider_id:
         run = db.get(AIRun, run_id)
         if run is None:
             return
-        provider = db.scalar(select(AIProvider).where(AIProvider.id == provider_id, AIProvider.user_id == user_id, AIProvider.enabled.is_(True))) if provider_id else db.scalar(select(AIProvider).where(AIProvider.user_id == user_id, AIProvider.enabled.is_(True)).order_by(AIProvider.created_at))
+        if provider_id:
+            provider = db.scalar(select(AIProvider).where(AIProvider.id == provider_id, AIProvider.user_id == user_id, AIProvider.enabled.is_(True)))
+        else:
+            owner = db.get(User, user_id)
+            provider = db.scalar(select(AIProvider).where(AIProvider.id == owner.active_provider_id, AIProvider.user_id == user_id, AIProvider.enabled.is_(True))) if owner and owner.active_provider_id else None
+            provider = provider or db.scalar(select(AIProvider).where(AIProvider.user_id == user_id, AIProvider.enabled.is_(True)).order_by(AIProvider.created_at))
         if provider is None:
             _finish(db, run, "failed", "未配置可用的 AI Provider")
             return
+        run.provider_id = provider.id
         run.status, run.started_at = "running", datetime.now(timezone.utc)
         _event(db, run, "run_started", {})
         db.commit()
-        context = ContextBuilder(db, user_id).build_context(run.conversation.book_id, conversation_id, selection=selection, chapter_id=chapter_id, current_user_message_id=run.user_message_id)
+        user_message = db.get(Message, run.user_message_id)
+        if user_message is None:
+            raise AppError(404, "message_not_found", "用户消息不存在")
+        search_results = search_book(db, user_id, run.conversation.book_id, user_message.content[:2_000])
+        context = ContextBuilder(db, user_id).build_context(
+            run.conversation.book_id,
+            conversation_id,
+            selection=selection,
+            chapter_id=chapter_id,
+            search_results=search_results,
+            current_user_message_id=run.user_message_id,
+        )
         messages: list[dict[str, Any]] = list(context.messages)
         bindings = _freeze_bindings(db, run, user_id)
         tool_context = _tool_context_message(bindings)
@@ -271,7 +292,7 @@ async def _execute(run_id: str, user_id: str, conversation_id: str, provider_id:
             # Keep tool metadata in the same provider-neutral context as the
             # reading material. Native ``tools`` parameters remain enabled.
             messages.insert(1, tool_context)
-        messages.append({"role": "user", "content": db.get(Message, run.user_message_id).content})
+        messages.append({"role": "user", "content": user_message.content})
         db.commit()
         binding_by_name = {item.exposed_tool_name: item for item in bindings}
         servers = {item.id: item for item in db.scalars(select(MCPServer).where(MCPServer.id.in_([b.mcp_server_id for b in bindings]))).all()} if bindings else {}
@@ -330,13 +351,18 @@ async def _execute(run_id: str, user_id: str, conversation_id: str, provider_id:
         _finish(db, run, "completed", None)
     except asyncio.CancelledError:
         if run is not None:
+            db.rollback()
             _finish(db, run, "cancelled" if not output else "partial", "运行已取消")
     except asyncio.TimeoutError:
         if run is not None:
+            db.rollback()
             _event(db, run, "tool_deadline_exceeded", {"deadline_seconds": get_settings().ai_tool_deadline_seconds})
             _finish(db, run, "partial" if output else "failed", "工具运行超过 deadline")
     except Exception as exc:
         if run is not None:
+            # A failed SQL statement leaves PostgreSQL's transaction aborted;
+            # reset it before attempting to persist the terminal run state.
+            db.rollback()
             message = exc.message if isinstance(exc, AppError) else str(exc)
             status = "partial" if output or (isinstance(exc, AppError) and exc.code in {"tool_limit_reached", "tool_deadline_exceeded"}) else "failed"
             _finish(db, run, status, message[:500])
@@ -346,15 +372,23 @@ async def _execute(run_id: str, user_id: str, conversation_id: str, provider_id:
 
 
 def _finish(db: DbSession, run: AIRun, status: str, error: str | None) -> None:
-    locked = db.scalar(select(AIRun).where(AIRun.id == run.id).with_for_update())
-    if locked is None or locked.status not in ("queued", "running"):
-        return
-    message = db.get(Message, locked.assistant_message_id)
-    locked.status, locked.error_message, locked.completed_at = status, error, datetime.now(timezone.utc)
-    if message is not None:
-        message.status = status
-    _event(db, locked, "run_completed" if status == "completed" else status, {"error": error} if error else {})
-    db.commit()
+    try:
+        # A provider/search failure may have aborted the current PostgreSQL
+        # transaction. Reset it before trying to persist the terminal state.
+        db.rollback()
+        locked = db.scalar(select(AIRun).where(AIRun.id == run.id).with_for_update())
+        if locked is None or locked.status not in ("queued", "running"):
+            return
+        message = db.get(Message, locked.assistant_message_id)
+        locked.status, locked.error_message, locked.completed_at = status, error, datetime.now(timezone.utc)
+        if message is not None:
+            message.status = status
+        _event(db, locked, "run_completed" if status == "completed" else status, {"error": error} if error else {})
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("failed to persist AI run terminal state", extra={"run_id": run.id, "status": status})
+        raise
 
 
 def cancel_run(run_id: str, db: DbSession, user_id: str) -> AIRun:

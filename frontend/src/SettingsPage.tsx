@@ -218,6 +218,8 @@ export default function SettingsPage({
   const [providerName, setProviderName] = useState("My provider")
   const [providerNotice, setProviderNotice] = useState("")
   const [providerId, setProviderId] = useState<string | null>(null)
+  const [providerFormMode, setProviderFormMode] = useState<"edit" | "create">("edit")
+  const [providerFormOpen, setProviderFormOpen] = useState(false)
   const [providerHasKey, setProviderHasKey] = useState(false)
   const [providerSaving, setProviderSaving] = useState(false)
   const [mcpServers, setMcpServers] = useState<ApiMCPServer[]>([])
@@ -244,6 +246,11 @@ export default function SettingsPage({
   const [shareStats, setShareStats] = useState(false)
   const [user, setUser] = useState<ApiUser | null>(null)
   const [providers, setProviders] = useState<ApiAIProvider[]>([])
+  const [activeProviderId, setActiveProviderId] = useState<string | null>(null)
+  const [activeProviderNotice, setActiveProviderNotice] = useState("")
+  const [pendingProviderDelete, setPendingProviderDelete] = useState<ApiAIProvider | null>(null)
+  const [providerDeleteError, setProviderDeleteError] = useState<string | null>(null)
+  const [providerDeleting, setProviderDeleting] = useState(false)
   const refs = useRef<Record<SectionId, HTMLElement | null>>({
     "reading-log": null,
     appearance: null,
@@ -264,6 +271,10 @@ export default function SettingsPage({
     void api
       .listAIProviders()
       .then(setProviders)
+      .catch(() => undefined)
+    void api
+      .getActiveProvider()
+      .then((settings) => setActiveProviderId(settings.provider_id))
       .catch(() => undefined)
     setMcpLoading(true)
     void api
@@ -293,8 +304,11 @@ export default function SettingsPage({
       .catch(() => undefined)
   }, [])
   useEffect(() => {
-    if (providers.length && providerId === null) selectProvider(provider)
-  }, [providers])
+    if (providers.length && providerId === null && providerFormMode === "edit") {
+      const preferred = providers.find((item) => item.id === activeProviderId) || providers[0]
+      selectSavedProvider(preferred.id, false)
+    }
+  }, [providers, activeProviderId, providerId, providerFormMode])
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) =>
@@ -316,7 +330,9 @@ export default function SettingsPage({
     setProvider(value)
     setProviderNotice("")
     const existing =
-      value === "others"
+      providerFormMode === "create"
+        ? undefined
+        : value === "others"
         ? providers.find((item) => item.provider_type === "custom")
         : providers.find((item) => item.provider_type === value)
     setProviderId(existing?.id || null)
@@ -341,6 +357,35 @@ export default function SettingsPage({
       setModel(providerDefaults[value].model)
       setProviderName(value[0].toUpperCase() + value.slice(1))
     }
+  }
+  const selectSavedProvider = (id: string, open = true) => {
+    const existing = providers.find((item) => item.id === id)
+    if (!existing) return
+    setProviderFormMode("edit")
+    setProviderFormOpen(open)
+    const value: Provider = existing.provider_type === "custom" ? "others" : existing.provider_type as Provider
+    setProvider(value)
+    setProviderId(existing.id)
+    setProviderHasKey(existing.has_api_key)
+    setApiKey("")
+    setProviderNotice("")
+    setBaseUrl(existing.base_url || (value === "others" ? "" : providerDefaults[value].baseUrl))
+    setModel(existing.model)
+    setProviderName(existing.name)
+    if (existing.interface_format) setInterfaceFormat(existing.interface_format)
+  }
+  const startNewProvider = () => {
+    setProviderFormMode("create")
+    setProviderFormOpen(true)
+    setProviderId(null)
+    setProviderHasKey(false)
+    setProviderNotice("")
+    setApiKey("")
+    setProvider("ollama")
+    setProviderName("My provider")
+    setBaseUrl(providerDefaults.ollama.baseUrl)
+    setModel(providerDefaults.ollama.model)
+    setInterfaceFormat("openai")
   }
   const saveProvider = async () => {
     const needsKey = provider === "openai" || provider === "anthropic"
@@ -369,22 +414,69 @@ export default function SettingsPage({
         base_url: baseUrl.trim(),
         ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
       }
-      const saved = providerId
+      const saved = providerFormMode === "edit" && providerId
         ? await api.updateAIProvider(providerId, payload)
         : await api.createAIProvider(payload)
       setProviders((current) =>
-        providerId
+        providerFormMode === "edit" && providerId
           ? current.map((item) => (item.id === saved.id ? saved : item))
           : [...current, saved],
       )
+      setProviderFormMode("edit")
+      setProviderFormOpen(false)
       setProviderId(saved.id)
       setProviderHasKey(saved.has_api_key)
+      if (activeProviderId === null) {
+        await api.updateActiveProvider(saved.id)
+        setActiveProviderId(saved.id)
+      }
       setProviderNotice("已保存")
       setApiKey("")
     } catch (error) {
       setProviderNotice(error instanceof Error ? error.message : "保存失败")
     } finally {
       setProviderSaving(false)
+    }
+  }
+  const chooseActiveProvider = async (id: string) => {
+    const previous = activeProviderId
+    setActiveProviderId(id)
+    setActiveProviderNotice("")
+    try {
+      await api.updateActiveProvider(id)
+      setActiveProviderNotice("已切换")
+    } catch (error) {
+      setActiveProviderId(previous)
+      setActiveProviderNotice(error instanceof Error ? error.message : "切换失败")
+    }
+  }
+  const requestProviderDelete = (item: ApiAIProvider) => {
+    setProviderDeleteError(null)
+    setPendingProviderDelete(item)
+  }
+  const removeProvider = async () => {
+    if (!pendingProviderDelete || providerDeleting) return
+    const item = pendingProviderDelete
+    setProviderDeleting(true)
+    setProviderDeleteError(null)
+    try {
+      await api.deleteAIProvider(item.id)
+      const remaining = providers.filter((providerItem) => providerItem.id !== item.id)
+      setProviders(remaining)
+      if (activeProviderId === item.id) {
+        const fallback = remaining.find((providerItem) => providerItem.enabled) || null
+        await api.updateActiveProvider(fallback?.id || null)
+        setActiveProviderId(fallback?.id || null)
+      }
+      if (providerId === item.id) {
+        if (remaining[0]) selectSavedProvider(remaining[0].id, false)
+        else setProviderFormOpen(false)
+      }
+      setPendingProviderDelete(null)
+    } catch (error) {
+      setProviderDeleteError(error instanceof Error ? error.message : "删除失败")
+    } finally {
+      setProviderDeleting(false)
     }
   }
   const signOut = async () => {
@@ -699,110 +791,28 @@ export default function SettingsPage({
             </button>
             {advanced && (
               <div className="settings-advanced-body">
-                <Row label="Provider" alignTop>
-                  <div className="settings-provider-list">
-                    {([
-                      "openai",
-                      "anthropic",
-                      "ollama",
-                      "others",
-                    ] as Provider[]).map((value) => (
-                      <button
-                        key={value}
-                        onClick={() => selectProvider(value)}
-                        className={provider === value ? "is-selected" : ""}
-                      >
-                        {value[0].toUpperCase() + value.slice(1)}
-                      </button>
-                    ))}
+                <div className="settings-provider-manager">
+                  <div className="settings-provider-manager-heading">
+                    <div><h3>AI Provider</h3><p>管理连接配置并选择默认使用的 Provider。</p></div>
+                    <button className="settings-secondary-action" onClick={startNewProvider}>+ New provider</button>
                   </div>
-                </Row>
-                <Divider />
-                {provider === "others" && (
-                  <>
-                    <Row label="Name">
-                      <input
-                        className="settings-input"
-                        value={providerName}
-                        onChange={(event) =>
-                          setProviderName(event.target.value)
-                        }
-                      />
-                    </Row>
-                    <Divider />
-                    <Row label="Interface format">
-                      <select
-                        className="settings-input"
-                        value={interfaceFormat}
-                        onChange={(event) =>
-                          setInterfaceFormat(
-                            event.target.value as typeof interfaceFormat,
-                          )
-                        }
-                      >
-                        <option value="openai">OpenAI compatible</option>
-                        <option value="anthropic">Anthropic compatible</option>
-                        <option value="ollama">Ollama compatible</option>
-                      </select>
-                    </Row>
-                    <Divider />
-                  </>
-                )}
-                <Row label="API Key">
-                  <input
-                    type="password"
-                    className="settings-input"
-                    value={apiKey}
-                    onChange={(event) => {
-                      setApiKey(event.target.value)
-                      setProviderNotice("")
-                    }}
-                    placeholder={
-                      providerHasKey
-                        ? "已配置，留空则保持不变"
-                        : provider === "ollama"
-                          ? "可选"
-                          : "sk-..."
-                    }
-                  />
-                </Row>
-                <Divider />
-                <Row label="Base URL">
-                  <input
-                    className="settings-input"
-                    value={baseUrl}
-                    onChange={(event) => setBaseUrl(event.target.value)}
-                    readOnly={provider !== "others"}
-                    aria-label={
-                      provider === "others" ? "Base URL" : "默认 Base URL"
-                    }
-                  />
-                </Row>
-                <Divider />
-                <Row label="Model">
-                  <input
-                    className="settings-input"
-                    value={model}
-                    onChange={(event) => setModel(event.target.value)}
-                    placeholder="model name"
-                  />
-                </Row>
-                <div className="settings-provider-actions">
-                  <button
-                    onClick={() => void saveProvider()}
-                    disabled={providerSaving}
-                  >
-                    {providerSaving ? "Saving…" : "Save provider"}
-                  </button>
-                  {providerNotice && (
-                    <span
-                      className={
-                        providerNotice === "已保存" ? "is-success" : ""
-                      }
-                    >
-                      {providerNotice}
-                    </span>
-                  )}
+                  {providers.length ? <div className="settings-provider-cards">
+                    {providers.map((item) => <div className={"settings-provider-card " + (activeProviderId === item.id ? "is-current" : "")} key={item.id}>
+                      <div className="settings-provider-card-main"><div className="settings-provider-card-title"><strong>{item.name}</strong>{activeProviderId === item.id && <span>Current</span>}</div><small>{item.provider_type === "custom" ? "Custom" : item.provider_type} · {item.model}</small><em>{item.base_url || "No Base URL"}</em></div>
+                      <div className="settings-provider-card-actions"><button onClick={() => void chooseActiveProvider(item.id)} disabled={!item.enabled || activeProviderId === item.id}>{activeProviderId === item.id ? "Current" : "Use"}</button><button onClick={() => selectSavedProvider(item.id)}>Edit</button><button className="settings-danger" onClick={() => requestProviderDelete(item)}>Delete</button></div>
+                    </div>)}
+                  </div> : <p className="settings-empty">No providers saved yet.</p>}
+                  {activeProviderNotice && <p className="settings-provider-notice">{activeProviderNotice}</p>}
+                  {providerFormOpen && <div className="settings-provider-form">
+                    <div className="settings-provider-form-heading"><h3>{providerFormMode === "create" ? "New provider" : "Edit provider"}</h3><button className="settings-secondary-action" onClick={() => setProviderFormOpen(false)}>Cancel</button></div>
+                    <Row label="Provider type" alignTop><div className="settings-provider-list">{(["openai", "anthropic", "ollama", "others"] as Provider[]).map((value) => <button key={value} onClick={() => selectProvider(value)} className={provider === value ? "is-selected" : ""}>{value[0].toUpperCase() + value.slice(1)}</button>)}</div></Row><Divider />
+                    <Row label="Name"><input className="settings-input" value={providerName} onChange={(event) => setProviderName(event.target.value)} /></Row><Divider />
+                    {provider === "others" && <><Row label="Interface format"><select className="settings-input" value={interfaceFormat} onChange={(event) => setInterfaceFormat(event.target.value as typeof interfaceFormat)}><option value="openai">OpenAI compatible</option><option value="anthropic">Anthropic compatible</option><option value="ollama">Ollama compatible</option></select></Row><Divider /></>}
+                    <Row label="API Key"><input type="password" className="settings-input" value={apiKey} onChange={(event) => { setApiKey(event.target.value); setProviderNotice("") }} placeholder={providerHasKey ? "已配置，留空则保持不变" : provider === "ollama" ? "可选" : "sk-..."} /></Row><Divider />
+                    <Row label="Base URL"><input className="settings-input" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} readOnly={provider !== "others"} /></Row><Divider />
+                    <Row label="Model"><input className="settings-input" value={model} onChange={(event) => setModel(event.target.value)} placeholder="model name" /></Row>
+                    <div className="settings-provider-actions"><button onClick={() => void saveProvider()} disabled={providerSaving}>{providerSaving ? "Saving…" : providerFormMode === "create" ? "Create provider" : "Save changes"}</button>{providerNotice && <span className={providerNotice === "已保存" ? "is-success" : ""}>{providerNotice}</span>}</div>
+                  </div>}
                 </div>
                 <Divider />
                 <div className="settings-mcp">
@@ -1111,6 +1121,20 @@ export default function SettingsPage({
             if (!mcpDeleting) setPendingMcpDelete(null)
           }}
           onConfirm={() => void removeMcpServer()}
+        />
+      )}
+      {pendingProviderDelete && (
+        <ConfirmDialog
+          title="Delete Provider?"
+          message={"\u201c" + pendingProviderDelete.name + "\u201d will be permanently removed."}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          isBusy={providerDeleting}
+          error={providerDeleteError}
+          onCancel={() => {
+            if (!providerDeleting) setPendingProviderDelete(null)
+          }}
+          onConfirm={() => void removeProvider()}
         />
       )}
     </div>

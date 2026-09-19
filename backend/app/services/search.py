@@ -40,7 +40,7 @@ def search_book(db: DbSession, user_id: str, book_id: str, query: str, chapter_i
         params["chapter_id"] = chapter_id
     sql = text(
         "SELECT dc.id, dc.book_id, dc.chapter_id, c.chapter_index, c.title, dc.text, "
-        "dc.start_offset, dc.end_offset, pgroonga_score(tableoid, ctid) AS score "
+        "dc.start_offset, dc.end_offset, pgroonga_score(dc.tableoid, dc.ctid) AS score "
         "FROM document_chunks dc JOIN chapters c ON c.id = dc.chapter_id "
         "WHERE dc.book_id = :book_id AND c.book_id = :book_id AND EXISTS "
         "(SELECT 1 FROM books b WHERE b.id = dc.book_id AND b.user_id = :user_id) "
@@ -51,6 +51,10 @@ def search_book(db: DbSession, user_id: str, book_id: str, query: str, chapter_i
             db.execute(text("SET LOCAL statement_timeout = '10s'"))
         rows = db.execute(sql, params).mappings().all()
     except (DBAPIError, SQLAlchemyError) as exc:
+        # PostgreSQL marks the transaction as failed after a database error.
+        # Roll it back before the caller performs any further queries/updates
+        # (for example, persisting the AI run failure state).
+        db.rollback()
         raise AppError(503, "pgroonga_unavailable", "PGroonga 检索不可用，请检查数据库扩展") from exc
     seen: set[str] = set()
     results = []

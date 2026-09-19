@@ -9,7 +9,7 @@ from app.core.exceptions import AppError
 from app.models.ai import AIRun
 from app.models.book import Book
 from app.models.collaboration import Conversation, Message, Note
-from app.models.document import Annotation
+from app.models.document import Annotation, Chapter, DocumentChunk
 from app.models.mcp import MCPCallLog
 from app.models.user import User
 from app.services.companion import resolve_companion_prompt
@@ -79,6 +79,28 @@ def _prior_tool_results_context(logs: Iterable[MCPCallLog], max_chars: int) -> s
     return prefix + "\n".join(entries) + suffix
 
 
+def _book_content_context(results: Iterable[SearchBookResult]) -> str:
+    return "\n\n".join(
+        f"<book_content chunk_id={result.chunk_id} chapter_id={result.chapter_id}>\n{result.text}\n</book_content>"
+        for result in results
+    )
+
+
+def _selected_paragraphs_context(chunks: Iterable[DocumentChunk]) -> str | None:
+    paragraphs = list(chunks)
+    if not paragraphs:
+        return None
+    content = "\n\n".join(
+        f"<selected_paragraph chunk_index={chunk.chunk_index}>\n{chunk.text}\n</selected_paragraph>"
+        for chunk in paragraphs
+    )
+    return f"<selected_text_paragraphs>\n{content}\n</selected_text_paragraphs>"
+
+
+def _utf16_offset(value: str, index: int) -> int:
+    return len(value[:index].encode("utf-16-le")) // 2
+
+
 @dataclass(frozen=True)
 class ContextBundle:
     messages: list[dict[str, str]]
@@ -107,9 +129,34 @@ class ContextBuilder:
         selected_text = annotation.selected_text if annotation is not None else selection
         if selected_text:
             messages.append({"role": "system", "content": f"<selected_text>\n{selected_text}\n</selected_text>"})
+        selected_chapter_id = annotation.chapter_id if annotation is not None else chapter_id
+        selected_start = annotation.start_offset if annotation is not None else None
+        selected_end = annotation.end_offset if annotation is not None else None
+        if selected_text and selected_chapter_id and selected_start is None:
+            chapter = self.db.scalar(
+                select(Chapter).where(Chapter.id == selected_chapter_id, Chapter.book_id == book_id)
+            )
+            if chapter is not None:
+                first_match = chapter.text.find(selected_text)
+                if first_match >= 0 and chapter.text.find(selected_text, first_match + 1) < 0:
+                    selected_start = _utf16_offset(chapter.text, first_match)
+                    selected_end = _utf16_offset(chapter.text, first_match + len(selected_text))
+        if selected_chapter_id and selected_start is not None and selected_end is not None:
+            selected_chunks = self.db.scalars(
+                select(DocumentChunk)
+                .where(
+                    DocumentChunk.book_id == book_id,
+                    DocumentChunk.chapter_id == selected_chapter_id,
+                    DocumentChunk.start_offset < selected_end,
+                    DocumentChunk.end_offset > selected_start,
+                )
+                .order_by(DocumentChunk.chunk_index)
+            )
+            paragraph_context = _selected_paragraphs_context(selected_chunks)
+            if paragraph_context is not None:
+                messages.append({"role": "system", "content": paragraph_context})
         if search_results:
-            content = "\n\n".join(f"<book_content chunk_id={r.chunk_id}>\n{r.text}\n</book_content>" for r in search_results)
-            messages.append({"role": "system", "content": content})
+            messages.append({"role": "system", "content": _book_content_context(search_results)})
         notes = list(self.db.scalars(select(Note).where(Note.book_id == book_id, Note.user_id == self.user_id).order_by(Note.updated_at.desc()).limit(10)).all())
         annotations = list(self.db.scalars(select(Annotation).where(Annotation.book_id == book_id, Annotation.user_id == self.user_id).order_by(Annotation.updated_at.desc()).limit(20)).all())
         if notes:

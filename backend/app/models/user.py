@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -19,6 +19,7 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     companion_style: Mapped[str | None] = mapped_column(String(20), nullable=True)
     companion_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active_provider_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("ai_providers.id", ondelete="SET NULL"), nullable=True)
 
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     books = relationship("Book", back_populates="user", cascade="all, delete-orphan")
@@ -29,7 +30,7 @@ class User(Base):
     notes = relationship("Note", back_populates="user", cascade="all, delete-orphan")
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
     messages = relationship("Message", back_populates="user", cascade="all, delete-orphan")
-    ai_providers = relationship("AIProvider", back_populates="user", cascade="all, delete-orphan")
+    ai_providers = relationship("AIProvider", back_populates="user", cascade="all, delete-orphan", foreign_keys="AIProvider.user_id")
     ai_runs = relationship("AIRun", back_populates="user", cascade="all, delete-orphan")
     mcp_servers = relationship("MCPServer", back_populates="user", cascade="all, delete-orphan")
     mcp_call_logs = relationship("MCPCallLog", back_populates="user", cascade="all, delete-orphan")
