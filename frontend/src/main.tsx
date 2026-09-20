@@ -13,6 +13,7 @@ rootStyle.setProperty('--color-muted', palette.muted)
 rootStyle.setProperty('--color-border', palette.border)
 rootStyle.setProperty('--color-border-mid', palette.borderMid)
 rootStyle.setProperty('--color-accent', palette.accent)
+rootStyle.setProperty('--color-selection', palette.selection)
 rootStyle.setProperty('--color-danger', palette.danger)
 rootStyle.setProperty('--color-success', palette.success)
 

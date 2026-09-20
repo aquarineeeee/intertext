@@ -9,6 +9,8 @@ export const palette = {
   border: 'rgba(81,74,69,0.12)',
   borderMid: 'rgba(81,74,69,0.20)',
   accent: '#7D8A82',
+  amber: '#C58A3A',
+  selection: '#eadcc5',
   sidebar: '#87958D',
   sidebarFg: '#746D68',
   sidebarActive: '#E1E7E0',

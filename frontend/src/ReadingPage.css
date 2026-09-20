@@ -185,6 +185,24 @@
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+  padding: 10px 12px;
+  margin: -10px -12px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.reading-annotations [data-annotation-entry]:hover {
+  background: color-mix(in srgb, var(--color-amber) 8%, transparent);
+}
+
+.reading-annotations [data-annotation-entry].is-selected {
+  background: color-mix(in srgb, var(--color-amber) 18%, var(--color-cream));
+  box-shadow: inset 3px 0 0 var(--color-amber);
+}
+
+.reading-annotations [data-annotation-entry].is-selected [data-annotation-entry] {
+  background: transparent;
 }
 
 .reading-annotations [data-annotation-entry] p,
@@ -294,6 +312,14 @@ body:has(.reading-annotations-resizer.is-resizing) {
 .ann-highlight {
   cursor: pointer;
   transition: opacity 0.12s ease;
+}
+
+.ann-highlight[data-annotation-id] {
+  border-radius: 2px;
+}
+
+.ann-highlight[data-annotation-id].is-selected {
+  background: color-mix(in srgb, var(--color-amber) 22%, transparent);
 }
 
 .ann-highlight:hover { opacity: 0.65; }

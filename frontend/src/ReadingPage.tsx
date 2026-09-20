@@ -214,6 +214,7 @@ function renderParagraph(
   pIdx: number,
   onHover: (id: string | null) => void,
   onClickHighlight: (id: string) => void,
+  selectedId?: string | null,
   pendingSelection?: Sel | null,
   pendingType?: AnnType | null,
 ): ReactNode {
@@ -245,7 +246,7 @@ function renderParagraph(
         key={a.id}
         data-annotation-id={a.id}
         data-highlight="true"
-        className={`ann-highlight ann-${a.type}`}
+        className={`ann-highlight ann-${a.type}${selectedId === a.id ? ' is-selected' : ''}`}
         onMouseEnter={() => onHover(a.id)}
         onMouseLeave={() => onHover(null)}
         onClick={e => { e.stopPropagation(); if (a.id !== '__pending-selection__') onClickHighlight(a.id) }}
@@ -265,6 +266,7 @@ const COLLAPSE_AT = 4
 
 interface AEProps {
   ann: Ann
+  active: boolean
   onHover: (id: string | null) => void
   onToHighlight: (id: string) => void
   onToggle: (id: string) => void
@@ -274,7 +276,7 @@ interface AEProps {
   isTyping: boolean
 }
 
-function AnnotationEntry({ ann, onHover, onToHighlight, onToggle, replyVal, onReplyChange, onReplySubmit, isTyping }: AEProps) {
+function AnnotationEntry({ ann, active, onHover, onToHighlight, onToggle, replyVal, onReplyChange, onReplySubmit, isTyping }: AEProps) {
   const preview = ann.selectedText.length > 38
     ? ann.selectedText.slice(0, 38) + '…'
     : ann.selectedText
@@ -286,8 +288,13 @@ function AnnotationEntry({ ann, onHover, onToHighlight, onToggle, replyVal, onRe
   return (
     <div
       data-annotation-entry={ann.id}
+      className={`reading-annotation-entry${active ? ' is-selected' : ''}`}
       onMouseEnter={() => onHover(ann.id)}
       onMouseLeave={() => onHover(null)}
+      onClick={event => {
+        if ((event.target as HTMLElement).closest('button, input, textarea, a, details')) return
+        onToHighlight(ann.id)
+      }}
     >
       {/* Source reference */}
       <button
@@ -435,6 +442,7 @@ export default function App() {
   const [noteVal, setNoteVal] = useState('')
   const [tocOpen, setTocOpen] = useState(false)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
   const [connector, setConnector] = useState<Connector | null>(null)
   const [aiTypingId, setAiTypingId] = useState<string | null>(null)
   const [replies, setReplies] = useState<Record<string, string>>({})
@@ -858,6 +866,7 @@ export default function App() {
   }
 
   const scrollToEntry = (id: string) => {
+    setSelectedAnnotationId(id)
     const panel = annotationPanelRef.current
     const el = panel?.querySelector<HTMLElement>(`[data-annotation-entry="${id}"]`)
     if (panel && el) {
@@ -876,6 +885,7 @@ export default function App() {
   }
 
   const scrollToHighlight = (id: string) => {
+    setSelectedAnnotationId(id)
     const el = document.querySelector(`[data-annotation-id="${id}"][data-highlight]`)
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setTimeout(() => flashEl(`[data-annotation-id="${id}"][data-highlight]`, 'flash-span'), 300)
@@ -913,7 +923,7 @@ export default function App() {
     '--color-mid': palette.muted,
     '--color-faint': palette.muted,
     '--color-rule': palette.border,
-    '--color-amber': palette.accent,
+    '--color-amber': palette.amber,
     '--color-umber': palette.fg,
     '--color-slate': palette.sidebar,
     '--color-overlay': palette.borderMid,
@@ -958,7 +968,7 @@ export default function App() {
                 <div key={i} className="reading-next-chapter" style={{ fontFamily: 'var(--font-ui)' }}>{p.slice(2)}</div>
               ) : (
                 <p key={i} data-paragraph-index={i} className="text-ink" style={{ fontFamily: 'var(--font-body)', fontSize: `${fontSize}px`, lineHeight }}>
-                  {renderParagraph(p, annotations, i, setHoveredId, scrollToEntry, pendingSelection, pendingType)}
+                  {renderParagraph(p, annotations, i, setHoveredId, scrollToEntry, selectedAnnotationId, pendingSelection, pendingType)}
                 </p>
               ))}
             </div>
@@ -1003,6 +1013,7 @@ export default function App() {
                   <AnnotationEntry
                     key={ann.id}
                     ann={ann}
+                    active={selectedAnnotationId === ann.id}
                     onHover={setHoveredId}
                     onToHighlight={scrollToHighlight}
                     onToggle={toggleExpand}

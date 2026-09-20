@@ -19,6 +19,16 @@ body {
   box-sizing: border-box;
 }
 
+::selection {
+  color: var(--color-fg, #514A45);
+  background: var(--color-selection, #E2A84A);
+}
+
+::-moz-selection {
+  color: var(--color-fg, #514A45);
+  background: var(--color-selection, #E2A84A);
+}
+
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
