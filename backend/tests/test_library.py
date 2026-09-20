@@ -10,7 +10,9 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - register all relationships before creating tables
 from app.api.deps import get_current_user
+from app.api.routes.collaboration import router as collaboration_router
 from app.api.routes.library import router
+from app.api.routes.reading import router as reading_router
 from app.core.exceptions import AppError, app_error_handler
 from app.db.base import Base
 from app.db.session import get_db
@@ -91,6 +93,8 @@ def library_client() -> TestClient:
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
+    app.include_router(reading_router, prefix="/api/v1")
+    app.include_router(collaboration_router, prefix="/api/v1")
     app.add_exception_handler(AppError, app_error_handler)
 
     def override_db():
@@ -133,6 +137,7 @@ def test_library_summary_and_timelines(library_client: TestClient) -> None:
 
     searched_annotations = library_client.get("/api/v1/library/annotations", params={"q": "searchable"}).json()
     assert [item["id"] for item in searched_annotations["items"]] == ["annotation-new"]
+    assert searched_annotations["items"][0]["first_user_message"] == "Question"
     searched_notes = library_client.get("/api/v1/library/notes", params={"q": "find me"}).json()
     assert [item["id"] for item in searched_notes["items"]] == ["note-new"]
     notes = library_client.get("/api/v1/library/notes").json()
@@ -156,3 +161,17 @@ def test_reading_context_is_chapter_scoped_and_embeds_transcript(library_client:
 
     assert library_client.get("/api/v1/books/book-2/chapters/private-chapter/reading-context").status_code == 404
     assert library_client.get("/api/v1/library/annotations", params={"cursor": "not-a-cursor"}).status_code == 400
+
+
+def test_annotation_messages_are_complete_and_private(library_client: TestClient) -> None:
+    annotations = library_client.get("/api/v1/books/book-1/annotations").json()
+    current = next(item for item in annotations if item["id"] == "annotation-new")
+    assert current["first_user_message"] == "Question"
+
+    response = library_client.get("/api/v1/books/book-1/annotations/annotation-new/messages")
+    assert response.status_code == 200
+    assert [(message["role"], message["content"]) for message in response.json()] == [
+        ("user", "Question"),
+        ("assistant", "Answer"),
+    ]
+    assert library_client.get("/api/v1/books/book-2/annotations/private-annotation/messages").status_code == 404

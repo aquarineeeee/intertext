@@ -23,6 +23,7 @@ class LibraryAnnotationResponse(BaseModel):
     chapter_title: str
     selected_text: str
     note_content: str | None
+    first_user_message: str | None
     created_at: datetime
 
 

@@ -132,6 +132,23 @@ def list_library_annotations(
     rows = db.execute(statement.order_by(Annotation.created_at.desc(), Annotation.id.desc()).limit(limit + 1)).all()
     has_more = len(rows) > limit
     rows = rows[:limit]
+    annotation_ids = [row[0].id for row in rows]
+    first_user_messages: dict[str, str] = {}
+    if annotation_ids:
+        message_rows = db.execute(
+            select(Conversation.annotation_id, Message.content)
+            .join(Message, Message.conversation_id == Conversation.id)
+            .where(
+                Conversation.user_id == user.id,
+                Conversation.annotation_id.in_(annotation_ids),
+                Message.user_id == user.id,
+                Message.role == "user",
+            )
+            .order_by(Message.created_at, Message.id)
+        ).all()
+        for annotation_id, content in message_rows:
+            if annotation_id is not None:
+                first_user_messages.setdefault(annotation_id, content)
     items = [
         {
             "id": annotation.id,
@@ -142,6 +159,7 @@ def list_library_annotations(
             "chapter_title": chapter_title,
             "selected_text": annotation.selected_text,
             "note_content": annotation.note_content,
+            "first_user_message": first_user_messages.get(annotation.id),
             "created_at": annotation.created_at,
         }
         for annotation, book_title, chapter_index, chapter_title in rows

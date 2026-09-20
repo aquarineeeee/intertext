@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models.book import Book
+from app.models.collaboration import Conversation, Message
 from app.models.document import Annotation, Chapter, Excerpt, ReadingProgress
 from app.models.user import User
 from app.schemas.reading import (
@@ -159,7 +160,7 @@ def reading_stats(db: DbSession = Depends(get_db), user: User = Depends(get_curr
 
 
 @router.get("/{book_id}/annotations", response_model=list[AnnotationResponse])
-def list_annotations(book_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> list[Annotation]:
+def list_annotations(book_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> list[dict]:
     _book(db, book_id, user)
     annotations = list(db.scalars(select(Annotation).where(Annotation.book_id == book_id, Annotation.user_id == user.id).order_by(Annotation.created_at)).all())
     chapters = {chapter.id: chapter for chapter in db.scalars(select(Chapter).where(Chapter.book_id == book_id)).all()}
@@ -172,7 +173,41 @@ def list_annotations(book_id: str, db: DbSession = Depends(get_db), user: User =
             changed |= previous != (annotation.status, annotation.location_error)
     if changed:
         db.commit()
-    return annotations
+    annotation_ids = [annotation.id for annotation in annotations]
+    first_user_messages: dict[str, str] = {}
+    if annotation_ids:
+        rows = db.execute(
+            select(Conversation.annotation_id, Message.content)
+            .join(Message, Message.conversation_id == Conversation.id)
+            .where(
+                Conversation.user_id == user.id,
+                Conversation.annotation_id.in_(annotation_ids),
+                Message.user_id == user.id,
+                Message.role == "user",
+            )
+            .order_by(Message.created_at, Message.id)
+        ).all()
+        for annotation_id, content in rows:
+            if annotation_id is not None:
+                first_user_messages.setdefault(annotation_id, content)
+    return [
+        {
+            "id": annotation.id,
+            "book_id": annotation.book_id,
+            "chapter_id": annotation.chapter_id,
+            "start_offset": annotation.start_offset,
+            "end_offset": annotation.end_offset,
+            "selected_text": annotation.selected_text,
+            "note_content": annotation.note_content,
+            "first_user_message": first_user_messages.get(annotation.id),
+            "color": annotation.color,
+            "status": annotation.status,
+            "location_error": annotation.location_error,
+            "created_at": annotation.created_at,
+            "updated_at": annotation.updated_at,
+        }
+        for annotation in annotations
+    ]
 
 
 @router.post("/{book_id}/annotations", response_model=AnnotationResponse, status_code=201)

@@ -141,13 +141,6 @@
 .paratext-entry-menu button:hover, .paratext-entry-menu button:focus-visible { background: var(--paratext-surface-muted); outline: 0; }
 .paratext-entry-note { margin: 6px 36px 0 14px; color: var(--paratext-muted); font-size: 12px; line-height: 1.45; }
 
-.paratext-entry-modal-heading { margin-top: 18px; font-family: 'Lora', Georgia, serif; font-size: 15px; }
-.paratext-entry-modal-quote { margin: 18px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--paratext-rule-strong); color: var(--paratext-ink); font-family: 'Lora', Georgia, serif; font-size: 16px; line-height: 1.65; }
-.paratext-entry-modal-content { margin: 18px 0 0; white-space: pre-wrap; color: var(--paratext-ink); font-family: 'Lora', Georgia, serif; font-size: 15px; line-height: 1.7; }
-.paratext-entry-modal-empty { margin: 18px 0 0; color: var(--paratext-muted); font-size: 13px; }
-.paratext-entry-modal-date { margin-top: 18px; color: var(--paratext-muted); font-family: 'DM Mono', monospace; font-size: 10px; }
-.paratext-entry-modal textarea { min-height: 150px; margin-top: 18px; padding: 10px; border: 1px solid var(--paratext-rule); line-height: 1.6; }
-
 .paratext-note-modal-backdrop {
   position: fixed;
   inset: 0;

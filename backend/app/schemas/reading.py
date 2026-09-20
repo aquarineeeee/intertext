@@ -53,6 +53,7 @@ class AnnotationResponse(BaseModel):
     end_offset: int
     selected_text: str
     note_content: str | None
+    first_user_message: str | None = None
     color: str
     status: str
     location_error: str | None

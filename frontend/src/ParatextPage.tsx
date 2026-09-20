@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiExcerpt, type ApiNote, type ApiReadingBootstrap } from './api'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiExcerpt, type ApiMessage, type ApiNote, type ApiReadingBootstrap } from './api'
 import { palette as C } from './theme'
 import ConfirmDialog from './ConfirmDialog'
+import EntryDetailModal from './EntryDetailModal'
 import './ParatextPage.css'
 
 interface ParatextPageProps {
@@ -14,6 +15,8 @@ type LedgerEntry = {
   id: string
   kind: 'annotation' | 'excerpt' | 'note'
   quote: string
+  sourceText?: string
+  chapterId?: string
   note?: string
   title?: string
   date: string
@@ -75,6 +78,9 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
   const [entrySaving, setEntrySaving] = useState(false)
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<LedgerEntry | null>(null)
   const [entryDeleting, setEntryDeleting] = useState(false)
+  const [entryMessages, setEntryMessages] = useState<ApiMessage[]>([])
+  const [entryMessagesLoading, setEntryMessagesLoading] = useState(false)
+  const entryMessageRequest = useRef(0)
 
   const requestedBookId = bookId || new URLSearchParams(window.location.search).get('bookId') || undefined
 
@@ -132,7 +138,9 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
     ...annotations.map(annotation => ({
       id: `annotation-${annotation.id}`,
       kind: 'annotation' as const,
-      quote: `“${annotation.selected_text}”`,
+      quote: annotation.first_user_message || `“${annotation.selected_text}”`,
+      sourceText: annotation.selected_text,
+      chapterId: annotation.chapter_id,
       note: annotation.note_content || undefined,
       date: annotation.created_at,
       timestamp: Date.parse(annotation.created_at) || 0,
@@ -142,6 +150,8 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
       id: `excerpt-${excerpt.id}`,
       kind: 'excerpt' as const,
       quote: `“${excerpt.selected_text}”${chapterById.get(excerpt.chapter_id) ? ` | ${chapterById.get(excerpt.chapter_id)!.title}` : ''}`,
+      sourceText: excerpt.selected_text,
+      chapterId: excerpt.chapter_id,
       date: excerpt.created_at,
       timestamp: Date.parse(excerpt.created_at) || 0,
       sourceId: excerpt.id,
@@ -157,15 +167,16 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
     })),
   ]), [annotations, excerpts, notes, chapterById])
 
-  const readPath = (chapterId?: string) => {
+  const readPath = (chapterId?: string, highlightId?: string) => {
     if (!book) return '/read'
     const params = new URLSearchParams({ bookId: book.id })
     if (chapterId) params.set('chapterId', chapterId)
+    if (highlightId) params.set('highlightId', highlightId)
     return `/read?${params.toString()}`
   }
 
-  const openReading = (chapterId?: string) => {
-    const path = readPath(chapterId)
+  const openReading = (chapterId?: string, highlightId?: string) => {
+    const path = readPath(chapterId, highlightId)
     if (book && onOpenReading) {
       onOpenReading(path, { book, chapters, last_read_chapter_id: lastReadChapterId })
       return
@@ -191,17 +202,31 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
   }
 
   const openEntryModal = (entry: LedgerEntry, mode: 'view' | 'edit' = 'view') => {
+    const requestId = entryMessageRequest.current + 1
+    entryMessageRequest.current = requestId
     setOpenMenuId(null)
     setSelectedEntry(entry)
     setEntryModalMode(mode)
     setEntryActionError(null)
     setEntryEditTitle(entry.title || '')
     setEntryEditContent(entry.kind === 'annotation' ? (entry.note || '') : entry.kind === 'note' ? entry.quote : entry.quote)
+    setEntryMessages([])
+    if (mode === 'view' && entry.kind === 'annotation' && book) {
+      setEntryMessagesLoading(true)
+      void api.listAnnotationMessages(book.id, entry.sourceId)
+        .then(messages => { if (entryMessageRequest.current === requestId) setEntryMessages(messages) })
+        .catch(loadError => { if (entryMessageRequest.current === requestId) setEntryActionError(loadError instanceof Error ? loadError.message : '无法加载对话。') })
+        .finally(() => { if (entryMessageRequest.current === requestId) setEntryMessagesLoading(false) })
+    } else {
+      setEntryMessagesLoading(false)
+    }
   }
 
   const closeEntryModal = () => {
     if (entrySaving) return
+    entryMessageRequest.current += 1
     setSelectedEntry(null)
+    setEntryMessagesLoading(false)
     setEntryActionError(null)
   }
 
@@ -413,31 +438,28 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
       )}
 
       {selectedEntry && (
-        <div className="paratext-note-modal-backdrop" onClick={closeEntryModal}>
-          <div className="paratext-note-modal paratext-entry-modal" role="dialog" aria-modal="true" aria-label="Annotation details" onClick={event => event.stopPropagation()}>
-            <div className="paratext-note-title">{entryModalMode === 'edit' ? '编辑条目' : selectedEntry.kind === 'annotation' ? '批注详情' : selectedEntry.kind === 'note' ? '阅读笔记' : '摘录详情'}</div>
-            {entryModalMode === 'edit' && selectedEntry.kind === 'note' ? (
-              <input value={entryEditTitle} onChange={event => setEntryEditTitle(event.target.value)} placeholder="标题" autoFocus />
-            ) : selectedEntry.title ? (
-              <div className="paratext-entry-modal-heading">{selectedEntry.title}</div>
-            ) : null}
-            {selectedEntry.kind !== 'note' && <blockquote className="paratext-entry-modal-quote">{selectedEntry.quote}</blockquote>}
-            {entryModalMode === 'edit' && selectedEntry.kind !== 'excerpt' ? (
-              <textarea value={entryEditContent} onChange={event => setEntryEditContent(event.target.value)} rows={8} autoFocus={selectedEntry.kind === 'annotation'} />
-            ) : selectedEntry.kind === 'note' ? (
-              <p className="paratext-entry-modal-content">{selectedEntry.quote}</p>
-            ) : selectedEntry.note ? (
-              <p className="paratext-entry-modal-content">{selectedEntry.note}</p>
-            ) : <p className="paratext-entry-modal-empty">暂无批注内容</p>}
-            <div className="paratext-entry-modal-date">{formatDate(selectedEntry.date)}</div>
-            {entryActionError && <p className="paratext-note-error">{entryActionError}</p>}
-            <div className="paratext-note-actions">
-              <button type="button" onClick={closeEntryModal}>关闭</button>
-              {entryModalMode === 'view' && selectedEntry.kind !== 'excerpt' && <button type="button" onClick={() => openEntryModal(selectedEntry, 'edit')}>编辑</button>}
-              {entryModalMode === 'edit' && <button type="button" disabled={entrySaving || (selectedEntry.kind === 'note' && !entryEditContent.trim())} onClick={() => void handleEntrySave()}>{entrySaving ? '保存中…' : '保存'}</button>}
-            </div>
-          </div>
-        </div>
+        <EntryDetailModal
+          entry={{
+            kind: selectedEntry.kind,
+            title: selectedEntry.title,
+            quote: selectedEntry.sourceText,
+            content: selectedEntry.kind === 'note' ? selectedEntry.quote : selectedEntry.note,
+            date: selectedEntry.date,
+            messages: entryMessages,
+          }}
+          mode={entryModalMode}
+          editTitle={entryEditTitle}
+          editContent={entryEditContent}
+          loadingMessages={entryMessagesLoading}
+          error={entryActionError}
+          saving={entrySaving}
+          onClose={closeEntryModal}
+          onOpenSource={selectedEntry.kind !== 'note' && selectedEntry.chapterId ? () => openReading(selectedEntry.chapterId, selectedEntry.sourceId) : undefined}
+          onEdit={selectedEntry.kind !== 'excerpt' ? () => openEntryModal(selectedEntry, 'edit') : undefined}
+          onEditTitleChange={setEntryEditTitle}
+          onEditContentChange={setEntryEditContent}
+          onSave={() => void handleEntrySave()}
+        />
       )}
 
       {pendingDeleteEntry && (

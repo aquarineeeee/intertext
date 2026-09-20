@@ -461,6 +461,7 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
   const query = new URLSearchParams(window.location.search)
   const requestedBookId = query.get('bookId') || undefined
   const requestedChapterId = query.get('chapterId') || undefined
+  const requestedHighlightId = query.get('highlightId') || undefined
   const [book, setBook] = useState<ApiBook | null>(null)
   const [chapters, setChapters] = useState<ApiChapter[]>([])
   const [chapterId, setChapterId] = useState<string | undefined>(requestedChapterId)
@@ -501,6 +502,7 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
   const pendingComposerRef = useRef<HTMLDivElement>(null)
   const annotationResizeStart = useRef<{ x: number; width: number } | null>(null)
   const eventSources = useRef<Record<string, EventSource>>({})
+  const initialHighlightHandled = useRef(false)
 
   useEffect(() => () => {
     Object.values(eventSources.current).forEach(source => source.close())
@@ -927,6 +929,14 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setTimeout(() => flashEl(`[data-annotation-id="${id}"][data-highlight]`, 'flash-span'), 300)
   }
+
+  useEffect(() => {
+    if (loading || !requestedHighlightId || initialHighlightHandled.current) return
+    if (!annotations.some(annotation => annotation.id === requestedHighlightId)) return
+    initialHighlightHandled.current = true
+    const frame = window.requestAnimationFrame(() => scrollToHighlight(requestedHighlightId))
+    return () => window.cancelAnimationFrame(frame)
+  }, [annotations, loading, requestedHighlightId])
 
   const toggleExpand = (id: string) => {
     setAnnotations(prev => prev.map(a => a.id === id ? { ...a, expanded: !a.expanded } : a))

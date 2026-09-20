@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { api, isUnauthorized, type ApiReadingBootstrap } from './api'
+import { api, isUnauthorized, type ApiMessage, type ApiReadingBootstrap } from './api'
 import { palette as C } from './theme'
 import SettingsPage from './SettingsPage'
 import AuthPage from './AuthPage'
 import ReadingPage from './ReadingPage'
 import ParatextPage from './ParatextPage'
 import ConfirmDialog from './ConfirmDialog'
+import EntryDetailModal from './EntryDetailModal'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const SECTION_HEADER_HEIGHT = 114
@@ -64,6 +65,10 @@ interface Entry {
   id: string | number
   type: 'annotation' | 'excerpt'
   text: string
+  selectedText: string
+  noteContent: string | null
+  firstUserMessage: string | null
+  chapterId: string
   page: number
   bookTitle: string
   bookId: string | number
@@ -73,6 +78,7 @@ interface Entry {
 interface Note {
   id: string | number
   title: string
+  content: string
   date: string
   bookTitle: string | null
   bookId: string | number
@@ -501,10 +507,39 @@ function BooksPanel({ books, loading, onBookImported, onOpenBook, onDeleteBook }
 }
 
 // ─── Annotations / Excerpts Panel ─────────────────────────────────────────────
-function AnnotationsPanel({ entries, onTabChange }: { entries: Entry[]; onTabChange?: (tab: 'annotation' | 'excerpt') => void }) {
+function AnnotationsPanel({ entries, onTabChange, onNavigate }: { entries: Entry[]; onTabChange?: (tab: 'annotation' | 'excerpt') => void; onNavigate: (path: string) => void }) {
   const [tab, setTab] = useState<'annotation' | 'excerpt'>('annotation')
   const [bookFilter, setBookFilter] = useState<string | number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
+  const [messages, setMessages] = useState<ApiMessage[]>([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const detailRequest = useRef(0)
+
+  const openEntry = (entry: Entry) => {
+    const requestId = detailRequest.current + 1
+    detailRequest.current = requestId
+    setSelectedEntry(entry)
+    setMessages([])
+    setLoadingMessages(false)
+    setDetailError(null)
+    if (entry.type !== 'annotation' || !entry.firstUserMessage) return
+    setLoadingMessages(true)
+    void api.listAnnotationMessages(String(entry.bookId), String(entry.id))
+      .then(result => { if (detailRequest.current === requestId) setMessages(result) })
+      .catch(error => { if (detailRequest.current === requestId) setDetailError(error instanceof Error ? error.message : '无法加载对话。') })
+      .finally(() => { if (detailRequest.current === requestId) setLoadingMessages(false) })
+  }
+
+  const openSource = (entry: Entry) => {
+    const params = new URLSearchParams({
+      bookId: String(entry.bookId),
+      chapterId: entry.chapterId,
+      highlightId: String(entry.id),
+    })
+    onNavigate(`/read?${params.toString()}`)
+  }
 
   const booksForTab = useMemo(() => {
     const seen = new Set<string | number>()
@@ -587,12 +622,21 @@ function AnnotationsPanel({ entries, onTabChange }: { entries: Entry[]; onTabCha
         {filtered.map(entry => (
           <div
             key={entry.id}
+            role="button"
+            tabIndex={0}
             style={{
               padding: '13px 20px',
               cursor: 'pointer',
               transition: 'background 0.1s',
             }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(81,74,69,0.03)')}
+            onClick={() => openEntry(entry)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                openEntry(entry)
+              }
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(81,74,69,0.03)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             <blockquote style={{
@@ -618,6 +662,22 @@ function AnnotationsPanel({ entries, onTabChange }: { entries: Entry[]; onTabCha
           </div>
         ))}
       </div>
+
+      {selectedEntry && (
+        <EntryDetailModal
+          entry={{
+            kind: selectedEntry.type,
+            quote: selectedEntry.selectedText,
+            content: selectedEntry.type === 'annotation' ? selectedEntry.noteContent || undefined : undefined,
+            date: selectedEntry.date,
+            messages,
+          }}
+          loadingMessages={loadingMessages}
+          error={detailError}
+          onClose={() => { detailRequest.current += 1; setSelectedEntry(null); setLoadingMessages(false) }}
+          onOpenSource={() => openSource(selectedEntry)}
+        />
+      )}
     </div>
   )
 }
@@ -625,6 +685,7 @@ function AnnotationsPanel({ entries, onTabChange }: { entries: Entry[]; onTabCha
 // ─── Notes Panel ─────────────────────────────────────────────────────────────
 function NotesPanel({ notes }: { notes: Note[] }) {
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
 
   const filtered = notes.filter(
     n => searchQuery === '' || n.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -652,12 +713,21 @@ function NotesPanel({ notes }: { notes: Note[] }) {
         ) : filtered.map(n => (
           <div
             key={n.id}
+            role="button"
+            tabIndex={0}
             style={{
               padding: '13px 20px',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               gap: 12,
               transition: 'background 0.1s',
+            }}
+            onClick={() => setSelectedNote(n)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setSelectedNote(n)
+              }
             }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(81,74,69,0.03)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -689,6 +759,13 @@ function NotesPanel({ notes }: { notes: Note[] }) {
           </div>
         ))}
       </div>
+
+      {selectedNote && (
+        <EntryDetailModal
+          entry={{ kind: 'note', title: selectedNote.title, content: selectedNote.content, date: selectedNote.date }}
+          onClose={() => setSelectedNote(null)}
+        />
+      )}
     </div>
   )
 }
@@ -826,6 +903,10 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
           id: excerpt.id,
           type: 'excerpt' as const,
           text: excerpt.selected_text,
+          selectedText: excerpt.selected_text,
+          noteContent: null,
+          firstUserMessage: null,
+          chapterId: excerpt.chapter_id,
           page: excerpt.chapter_index,
           bookTitle: excerpt.book_title,
           bookId: excerpt.book_id,
@@ -859,7 +940,11 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         setEntries(annotations.items.map(annotation => ({
           id: annotation.id,
           type: 'annotation' as const,
-          text: annotation.note_content || annotation.selected_text,
+          text: annotation.first_user_message || annotation.note_content || annotation.selected_text,
+          selectedText: annotation.selected_text,
+          noteContent: annotation.note_content,
+          firstUserMessage: annotation.first_user_message,
+          chapterId: annotation.chapter_id,
           page: annotation.chapter_index,
           bookTitle: annotation.book_title,
           bookId: annotation.book_id,
@@ -868,6 +953,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         setNotes(bookNotes.items.map(note => ({
           id: note.id,
           title: note.title,
+          content: note.content,
           date: note.updated_at.slice(0, 10),
           bookTitle: note.book_title,
           bookId: note.book_id,
@@ -899,7 +985,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
 
       {/* Right: Annotations (top) + Notes (bottom) */}
       <div style={{ display: 'grid', gridTemplateRows: '6fr 4fr', rowGap: 12, padding: '12px 12px 12px 0', overflow: 'hidden' }}>
-        <AnnotationsPanel entries={entries} onTabChange={loadExcerpts} />
+        <AnnotationsPanel entries={entries} onTabChange={loadExcerpts} onNavigate={onNavigate} />
         <NotesPanel notes={notes} />
       </div>
 

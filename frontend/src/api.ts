@@ -75,6 +75,7 @@ export type ApiAnnotation = {
   end_offset: number
   selected_text: string
   note_content: string | null
+  first_user_message?: string | null
   color: string
   status: 'active' | 'orphaned' | string
   location_error: string | null
@@ -194,6 +195,7 @@ export type ApiLibraryAnnotation = {
   chapter_title: string
   selected_text: string
   note_content: string | null
+  first_user_message: string | null
   created_at: string
 }
 
@@ -369,6 +371,8 @@ export const api = {
     request<void>(`/books/${bookId}/conversations/${conversationId}`, { method: 'DELETE' }),
   listMessages: (bookId: string, conversationId: string) =>
     request<ApiMessage[]>(`/books/${bookId}/conversations/${conversationId}/messages`),
+  listAnnotationMessages: (bookId: string, annotationId: string) =>
+    request<ApiMessage[]>(`/books/${bookId}/annotations/${annotationId}/messages`),
   createMessage: (
     bookId: string,
     conversationId: string,

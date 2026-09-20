@@ -165,6 +165,38 @@ def list_messages(book_id: str, conversation_id: str, db: DbSession = Depends(ge
     ]
 
 
+@router.get("/{book_id}/annotations/{annotation_id}/messages", response_model=list[MessageResponse])
+def list_annotation_messages(book_id: str, annotation_id: str, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> list[Message]:
+    _book(db, book_id, user)
+    annotation = db.scalar(
+        select(Annotation).where(
+            Annotation.id == annotation_id,
+            Annotation.book_id == book_id,
+            Annotation.user_id == user.id,
+        )
+    )
+    if annotation is None:
+        raise AppError(404, "annotation_not_found", "批注不存在")
+    role_rank = case(
+        (Message.role == "user", 0),
+        (Message.role == "assistant", 1),
+        else_=2,
+    )
+    return list(
+        db.scalars(
+            select(Message)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(
+                Conversation.annotation_id == annotation.id,
+                Conversation.book_id == book_id,
+                Conversation.user_id == user.id,
+                Message.user_id == user.id,
+            )
+            .order_by(Message.created_at, role_rank, Message.id)
+        ).all()
+    )
+
+
 @router.post("/{book_id}/conversations/{conversation_id}/messages", response_model=MessageResponse, status_code=201)
 def create_message(book_id: str, conversation_id: str, payload: MessageCreateRequest, response: Response, db: DbSession = Depends(get_db), user: User = Depends(get_current_user)) -> Message:
     conversation = _conversation(db, book_id, conversation_id, user)
