@@ -65,7 +65,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         # streams, so counting each reconnect against the general API budget
         # can starve normal annotation writes during local development.
         is_ai_event_stream = request.method == "GET" and request.url.path.startswith("/api/") and request.url.path.endswith("/events")
-        if not request.url.path.endswith("/health") and not is_ai_event_stream and self._rate_limited(client_host):
+        is_ai_transcript = request.method == "GET" and request.url.path.startswith("/api/") and request.url.path.endswith("/transcript")
+        rate_limit_key = f"{client_host}:ai-transcript" if is_ai_transcript else f"{client_host}:general"
+        if not request.url.path.endswith("/health") and not is_ai_event_stream and self._rate_limited(rate_limit_key):
             return JSONResponse(
                 status_code=429,
                 content={"error": {"code": "rate_limited", "message": "请求过于频繁"}},

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, Fragment, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { api, isUnauthorized, type ApiAIRunTranscriptEntry, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage } from './api'
+import { api, isUnauthorized, type ApiAIRunTranscriptEntry, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage, type ApiReadingBootstrap, type ApiReadingContext, type ApiReadingContextMessage } from './api'
 import { palette } from './theme'
 import './ReadingPage.css'
 
@@ -135,13 +135,51 @@ function transcriptToSteps(entries: ApiAIRunTranscriptEntry[]): ConversationStep
 }
 
 async function toDisplayMessages(items: ApiMessage[]): Promise<Msg[]> {
-  return Promise.all(items.filter(message => message.role === 'user' || message.role === 'assistant').map(async message => {
-    let steps: ConversationStep[] | undefined
-    if (message.role === 'assistant' && message.ai_run_id) {
-      try { steps = transcriptToSteps(await api.getAIRunTranscript(message.ai_run_id)) } catch { steps = undefined }
+  const visibleItems = items.filter(message => message.role === 'user' || message.role === 'assistant')
+  const result: Msg[] = new Array(visibleItems.length)
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(4, visibleItems.length) }, async () => {
+    while (nextIndex < visibleItems.length) {
+      const index = nextIndex++
+      const message = visibleItems[index]
+      let steps: ConversationStep[] | undefined
+      if (message.role === 'assistant' && message.ai_run_id) {
+        try { steps = transcriptToSteps(await api.getAIRunTranscript(message.ai_run_id)) } catch { steps = undefined }
+      }
+      result[index] = { id: message.id, role: message.role === 'assistant' ? 'ai' as const : 'user' as const, content: message.content, steps }
     }
-    return { id: message.id, role: message.role === 'assistant' ? 'ai' as const : 'user' as const, content: message.content, steps }
-  }))
+  })
+  await Promise.all(workers)
+  return result
+}
+
+function embeddedDisplayMessages(items: ApiReadingContextMessage[]): Msg[] {
+  return items
+    .filter(message => message.role === 'user' || message.role === 'assistant')
+    .map(message => ({
+      id: message.id,
+      role: message.role === 'assistant' ? 'ai' as const : 'user' as const,
+      content: message.content,
+      steps: message.role === 'assistant' ? transcriptToSteps(message.transcript as ApiAIRunTranscriptEntry[]) : undefined,
+    }))
+}
+
+function displayReadingContext(context: ApiReadingContext, toParagraph: (text: string, chapterId: string) => number) {
+  const annotations: Ann[] = [
+    ...context.excerpts.map(item => ({ id: item.id, type: 'bookmark' as const, paragraphIndex: toParagraph(item.selected_text, item.chapter_id), selectedText: item.selected_text, note: '', messages: [], expanded: false, chapterId: item.chapter_id })),
+    ...context.annotations.map(item => ({ id: item.id, type: 'annotation' as const, paragraphIndex: toParagraph(item.selected_text, item.chapter_id), selectedText: item.selected_text, note: item.note_content || '', messages: [], expanded: false, chapterId: item.chapter_id })),
+  ]
+  const conversations = context.discussions.map(discussion => discussion.conversation)
+  const messages = Object.fromEntries(context.discussions.map(discussion => [discussion.conversation.id, discussion.messages]))
+  for (const discussion of context.discussions) {
+    const anchor = annotations.find(item => item.id === discussion.annotation_id)
+    if (anchor) {
+      anchor.type = 'discussion'
+      anchor.conversationId = discussion.conversation.id
+      anchor.messages = embeddedDisplayMessages(discussion.messages)
+    }
+  }
+  return { annotations, conversations, messages }
 }
 
 function Markdown({ children }: { children: string }) {
@@ -419,7 +457,7 @@ const TOOLBAR_ITEMS: { action: AnnType; label: string; icon: string }[] = [
   { action: 'discussion', label: '问AI', icon: '✦' },
 ]
 
-export default function App() {
+export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) {
   const query = new URLSearchParams(window.location.search)
   const requestedBookId = query.get('bookId') || undefined
   const requestedChapterId = query.get('chapterId') || undefined
@@ -522,12 +560,23 @@ export default function App() {
     if (!next) return
     setLoadingNext(true)
     try {
-      const chapter = await api.getChapter(book.id, next.id)
+      const [chapter, readingContext] = await Promise.all([
+        api.getChapter(book.id, next.id),
+        api.getReadingContext(book.id, next.id),
+      ])
       const split = splitChapterText(chapter.text)
       const offset = chapterText.length + 2
+      const paragraphOffset = paragraphs.length + 1
+      const displayed = displayReadingContext(readingContext, text => {
+        const local = split.paragraphs.findIndex(item => item.includes(text))
+        return local >= 0 ? paragraphOffset + local : paragraphOffset
+      })
       setChapterText(prev => `${prev}\n\n${chapter.text}`)
       setParagraphs(prev => [...prev, `§ ${next.title || `第 ${next.chapter_index + 1} 章`}`, ...split.paragraphs])
       setParagraphStarts(prev => [...prev, offset, ...split.starts.map(start => start + offset)])
+      setAnnotations(prev => [...prev, ...displayed.annotations])
+      setConversations(prev => [...prev, ...displayed.conversations])
+      setMessages(prev => ({ ...prev, ...displayed.messages }))
       setChapterId(next.id)
       void api.saveProgress(book.id, next.id).catch(() => undefined)
     } catch (error) {
@@ -541,41 +590,29 @@ export default function App() {
       setLoading(true)
       setLoadError(null)
       try {
-        const books = await api.listBooks()
-        const selected = requestedBookId ? books.find(item => item.id === requestedBookId) : books[0]
+        const canUseBootstrap = bootstrap && (!requestedBookId || bootstrap.book.id === requestedBookId)
+        const selected = canUseBootstrap
+          ? bootstrap.book
+          : requestedBookId
+            ? await api.getBook(requestedBookId)
+            : (await api.listBooks())[0]
         if (!selected) throw new Error('暂无可阅读的书籍。')
-        const [bookChapters, progressRecord, bookAnnotations, excerpts, bookConversations] = await Promise.all([
-          api.listChapters(selected.id),
-          api.getProgress(selected.id),
-          api.listAnnotations(selected.id),
-          api.listExcerpts(selected.id),
-          api.listConversations(selected.id),
-        ])
-        const selectedChapterId = requestedChapterId || progressRecord?.last_read_chapter_id || bookChapters[0]?.id
+        const [bookChapters, fallbackProgress] = canUseBootstrap
+          ? [bootstrap.chapters, null]
+          : await Promise.all([api.listChapters(selected.id), api.getProgress(selected.id)])
+        const selectedChapterId = requestedChapterId || (canUseBootstrap ? bootstrap.last_read_chapter_id : fallbackProgress?.last_read_chapter_id) || bookChapters[0]?.id
         if (!selectedChapterId) throw new Error('这本书还没有可读章节。')
-        const chapter = await api.getChapter(selected.id, selectedChapterId)
+        const [chapter, readingContext] = await Promise.all([
+          api.getChapter(selected.id, selectedChapterId),
+          api.getReadingContext(selected.id, selectedChapterId),
+        ])
         const split = splitChapterText(chapter.text)
         const chapterIndex = new Map(bookChapters.map(item => [item.id, item.chapter_index]))
         const toParagraph = (text: string, id: string) => {
           const local = split.paragraphs.findIndex(item => item.includes(text))
           return local >= 0 ? local : Math.max(0, chapterIndex.get(id) || 0)
         }
-        const anns: Ann[] = [
-          ...excerpts.filter(item => item.chapter_id === chapter.id).map(item => ({ id: item.id, type: 'bookmark' as const, paragraphIndex: toParagraph(item.selected_text, item.chapter_id), selectedText: item.selected_text, note: '', messages: [], expanded: false, chapterId: item.chapter_id })),
-          ...bookAnnotations.filter(item => item.chapter_id === chapter.id).map(item => ({ id: item.id, type: item.note_content ? 'annotation' as const : 'annotation' as const, paragraphIndex: toParagraph(item.selected_text, item.chapter_id), selectedText: item.selected_text, note: item.note_content || '', messages: [], expanded: false, chapterId: item.chapter_id })),
-        ]
-        const conversationMessages = await Promise.all(bookConversations.map(async conversation => [conversation.id, await api.listMessages(selected.id, conversation.id)] as const))
-        const messageMap = Object.fromEntries(conversationMessages)
-        const displayMessageMap = Object.fromEntries(await Promise.all(conversationMessages.map(async ([conversationId, items]) => [conversationId, await toDisplayMessages(items)] as const)))
-        for (const conversation of bookConversations) {
-          if (!conversation.annotation_id) continue
-          const anchor = anns.find(item => item.id === conversation.annotation_id)
-          if (anchor) {
-            anchor.type = 'discussion'
-            anchor.conversationId = conversation.id
-            anchor.messages = displayMessageMap[conversation.id] || []
-          }
-        }
+        const displayed = displayReadingContext(readingContext, toParagraph)
         if (cancelled) return
         setBook(selected)
         setChapters(bookChapters)
@@ -583,9 +620,9 @@ export default function App() {
         setChapterText(chapter.text)
         setParagraphs(split.paragraphs)
         setParagraphStarts(split.starts)
-        setAnnotations(anns)
-        setConversations(bookConversations)
-        setMessages(messageMap)
+        setAnnotations(displayed.annotations)
+        setConversations(displayed.conversations)
+        setMessages(displayed.messages)
         void api.saveProgress(selected.id, chapter.id).catch(() => undefined)
       } catch (error) {
         if (!cancelled) setLoadError(isUnauthorized(error) ? '请先登录后再打开书籍。' : error instanceof Error ? error.message : '无法加载书籍。')
@@ -595,7 +632,7 @@ export default function App() {
     }
     void load()
     return () => { cancelled = true }
-  }, [requestedBookId, requestedChapterId])
+  }, [bootstrap, requestedBookId, requestedChapterId])
 
   useEffect(() => {
     if (!isResizingAnnotations) return

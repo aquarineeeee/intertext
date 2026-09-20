@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiExcerpt, type ApiNote } from './api'
+import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiExcerpt, type ApiNote, type ApiReadingBootstrap } from './api'
 import { palette as C } from './theme'
 import ConfirmDialog from './ConfirmDialog'
 import './ParatextPage.css'
 
 interface ParatextPageProps {
   onNavigate: (path: string) => void
+  onOpenReading?: (path: string, bootstrap: ApiReadingBootstrap) => void
   bookId?: string
 }
 
@@ -50,7 +51,7 @@ function bookError(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to load this book.'
 }
 
-export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) {
+export default function ParatextPage({ onNavigate, onOpenReading, bookId }: ParatextPageProps) {
   const [book, setBook] = useState<ApiBook | null>(null)
   const [chapters, setChapters] = useState<ApiChapter[]>([])
   const [lastReadChapterId, setLastReadChapterId] = useState<string | null>(null)
@@ -83,8 +84,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
       setLoading(true)
       setError(null)
       try {
-        const books = await api.listBooks()
-        const selected = requestedBookId ? books.find(item => item.id === requestedBookId) : books[0]
+        const selected = requestedBookId ? await api.getBook(requestedBookId) : (await api.listBooks())[0]
         if (!selected) throw new Error('No books are available in your library.')
         const [bookChapters, progress, bookAnnotations, bookExcerpts, bookNotes] = await Promise.all([
           api.listChapters(selected.id),
@@ -162,6 +162,15 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
     const params = new URLSearchParams({ bookId: book.id })
     if (chapterId) params.set('chapterId', chapterId)
     return `/read?${params.toString()}`
+  }
+
+  const openReading = (chapterId?: string) => {
+    const path = readPath(chapterId)
+    if (book && onOpenReading) {
+      onOpenReading(path, { book, chapters, last_read_chapter_id: lastReadChapterId })
+      return
+    }
+    onNavigate(path)
   }
 
   const handleCreateNote = async () => {
@@ -285,7 +294,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
                 <div className="paratext-progress-label"><span>Reading progress</span><strong>{progressPercent}%{currentChapterIndex >= 0 ? ` (Ch. ${currentChapterIndex + 1})` : ''}</strong></div>
                 <div className="paratext-progress-track"><span style={{ width: `${progressPercent}%` }} /></div>
                 <div className="paratext-progress-actions">
-                  <button type="button" className="paratext-continue" onClick={() => onNavigate(readPath(lastReadChapterId || chapters[0]?.id))}>
+                  <button type="button" className="paratext-continue" onClick={() => openReading(lastReadChapterId || chapters[0]?.id)}>
                     Continue reading <span aria-hidden="true">&rarr;</span>
                   </button>
                   <button type="button" className="paratext-add-notes" onClick={() => { setNoteError(null); setNoteComposerOpen(true) }}>
@@ -309,7 +318,7 @@ export default function ParatextPage({ onNavigate, bookId }: ParatextPageProps) 
             </div>
             <div className="paratext-chapter-list">
               {chapters.map(chapter => (
-                <button type="button" className={`paratext-chapter${chapter.id === lastReadChapterId ? ' is-current' : ''}`} key={chapter.id} onClick={() => onNavigate(readPath(chapter.id))}>
+                <button type="button" className={`paratext-chapter${chapter.id === lastReadChapterId ? ' is-current' : ''}`} key={chapter.id} onClick={() => openReading(chapter.id)}>
                   <span className="paratext-chapter-number">{String(chapter.chapter_index + 1).padStart(2, '0')}.</span>
                   <span className="paratext-chapter-title">{chapter.title || `Chapter ${chapter.chapter_index + 1}`}</span>
                   <span className="paratext-chapter-page">{chapter.text_length.toLocaleString()} chars</span>

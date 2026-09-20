@@ -14,6 +14,7 @@ from app.api.routes.reading import router as reading_router, stats_router as rea
 from app.api.routes.collaboration import router as collaboration_router
 from app.api.routes.ai import router as ai_router, ai_router as ai_global_router
 from app.api.routes.mcp import router as mcp_router
+from app.api.routes.library import router as library_router
 from app.core.config import get_settings
 from app.core.middleware import SecurityMiddleware
 from app.core.exceptions import AppError, app_error_handler, http_error_handler, unhandled_error_handler, validation_error_handler
@@ -79,6 +80,8 @@ def create_app() -> FastAPI:
     app.include_router(mcp_router, prefix="/api")
     app.include_router(data_router, prefix="/api/v1")
     app.include_router(data_router, prefix="/api")
+    app.include_router(library_router, prefix="/api/v1")
+    app.include_router(library_router, prefix="/api")
 
     @app.get("/health", tags=["system"])
     def health(db: DbSession = Depends(get_db)) -> dict[str, str]:

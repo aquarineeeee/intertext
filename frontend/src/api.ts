@@ -56,6 +56,17 @@ export type ApiReadingStats = {
   activity: Array<{ date: string; count: number }>
 }
 
+export type ApiLibraryBook = {
+  id: string
+  title: string
+  author: string | null
+  status: 'uploaded' | 'parsing' | 'ready' | 'failed' | string
+  chapter_count: number
+  last_read_chapter_id: string | null
+  furthest_chapter_index: number | null
+  progress_percent: number
+}
+
 export type ApiAnnotation = {
   id: string
   book_id: string
@@ -174,6 +185,56 @@ export type ApiAIRunTranscriptEntry = {
   created_at: string
 }
 
+export type ApiLibraryAnnotation = {
+  id: string
+  book_id: string
+  book_title: string
+  chapter_id: string
+  chapter_index: number
+  chapter_title: string
+  selected_text: string
+  note_content: string | null
+  created_at: string
+}
+
+export type ApiLibraryExcerpt = {
+  id: string
+  book_id: string
+  book_title: string
+  chapter_id: string
+  chapter_index: number
+  chapter_title: string
+  selected_text: string
+  created_at: string
+}
+
+export type ApiLibraryNote = ApiNote & { book_title: string }
+
+export type ApiCursorPage<T> = {
+  items: T[]
+  next_cursor: string | null
+}
+
+export type ApiReadingContextMessage = ApiMessage & {
+  transcript: Array<Pick<ApiAIRunTranscriptEntry, 'entry_type' | 'payload'>>
+}
+
+export type ApiReadingContext = {
+  annotations: ApiAnnotation[]
+  excerpts: ApiExcerpt[]
+  discussions: Array<{
+    annotation_id: string
+    conversation: ApiConversation
+    messages: ApiReadingContextMessage[]
+  }>
+}
+
+export type ApiReadingBootstrap = {
+  book: ApiBook
+  chapters: ApiChapter[]
+  last_read_chapter_id: string | null
+}
+
 export type ApiSearchResult = {
   chunk_id: string
   book_id: string
@@ -194,35 +255,52 @@ export type ApiError = {
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '')
+const pendingGetRequests = new Map<string, Promise<unknown>>()
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-      ...options.headers,
-    },
-  })
+  const url = `${API_BASE_URL}${path}`
+  const method = (options.method || 'GET').toUpperCase()
+  const requestKey = method === 'GET' && options.body === undefined ? url : null
+  const existing = requestKey ? pendingGetRequests.get(requestKey) : undefined
+  if (existing) return existing as Promise<T>
 
-  if (!response.ok) {
-    let payload: ApiError = {}
-    try {
-      payload = (await response.json()) as ApiError
-    } catch {
-      // Keep a useful error when the backend/proxy returns a non-JSON response.
+  const execute = async () => {
+    const response = await fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers: {
+        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+        ...options.headers,
+      },
+    })
+
+    if (!response.ok) {
+      let payload: ApiError = {}
+      try {
+        payload = (await response.json()) as ApiError
+      } catch {
+        // Keep a useful error when the backend/proxy returns a non-JSON response.
+      }
+      const error = new Error(payload.error?.message || `请求失败（${response.status}）`) as Error & {
+        status?: number
+        code?: string
+      }
+      error.status = response.status
+      error.code = payload.error?.code
+      throw error
     }
-    const error = new Error(payload.error?.message || `请求失败（${response.status}）`) as Error & {
-      status?: number
-      code?: string
-    }
-    error.status = response.status
-    error.code = payload.error?.code
-    throw error
+
+    if (response.status === 204) return undefined as T
+    return (await response.json()) as T
   }
 
-  if (response.status === 204) return undefined as T
-  return (await response.json()) as T
+  const pending = execute()
+  if (requestKey) pendingGetRequests.set(requestKey, pending)
+  try {
+    return await pending
+  } finally {
+    if (requestKey && pendingGetRequests.get(requestKey) === pending) pendingGetRequests.delete(requestKey)
+  }
 }
 
 export const api = {
@@ -243,8 +321,14 @@ export const api = {
     }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   listBooks: () => request<ApiBook[]>('/books'),
+  getBook: (bookId: string) => request<ApiBook>(`/books/${bookId}`),
+  listLibraryBooks: () => request<ApiLibraryBook[]>('/library/books'),
+  listLibraryAnnotations: (limit = 20) => request<ApiCursorPage<ApiLibraryAnnotation>>(`/library/annotations?limit=${limit}`),
+  listLibraryNotes: (limit = 10) => request<ApiCursorPage<ApiLibraryNote>>(`/library/notes?limit=${limit}`),
+  listLibraryExcerpts: (limit = 20) => request<ApiCursorPage<ApiLibraryExcerpt>>(`/library/excerpts?limit=${limit}`),
   listChapters: (bookId: string) => request<ApiChapter[]>(`/books/${bookId}/chapters`),
   getChapter: (bookId: string, chapterId: string) => request<ApiChapterContent>(`/books/${bookId}/chapters/${chapterId}`),
+  getReadingContext: (bookId: string, chapterId: string) => request<ApiReadingContext>(`/books/${bookId}/chapters/${chapterId}/reading-context`),
   getProgress: (bookId: string) => request<ApiProgress>(`/books/${bookId}/progress`),
   getReadingStats: () => request<ApiReadingStats>('/reading/stats'),
   saveProgress: (bookId: string, lastReadChapterId: string) => request<NonNullable<ApiProgress>>(`/books/${bookId}/progress`, { method: 'PUT', body: JSON.stringify({ last_read_chapter_id: lastReadChapterId }) }),

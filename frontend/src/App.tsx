@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { api, isUnauthorized } from './api'
+import { api, isUnauthorized, type ApiReadingBootstrap } from './api'
 import { palette as C } from './theme'
 import SettingsPage from './SettingsPage'
 import AuthPage from './AuthPage'
@@ -501,7 +501,7 @@ function BooksPanel({ books, loading, onBookImported, onOpenBook, onDeleteBook }
 }
 
 // ─── Annotations / Excerpts Panel ─────────────────────────────────────────────
-function AnnotationsPanel({ entries }: { entries: Entry[] }) {
+function AnnotationsPanel({ entries, onTabChange }: { entries: Entry[]; onTabChange?: (tab: 'annotation' | 'excerpt') => void }) {
   const [tab, setTab] = useState<'annotation' | 'excerpt'>('annotation')
   const [bookFilter, setBookFilter] = useState<string | number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -512,7 +512,7 @@ function AnnotationsPanel({ entries }: { entries: Entry[] }) {
       .filter(e => e.type === tab)
       .filter(e => !seen.has(e.bookId) && seen.add(e.bookId))
       .map(e => ({ id: e.bookId, title: e.bookTitle }))
-  }, [tab])
+  }, [entries, tab])
 
   const filtered = entries.filter(
     e => e.type === tab &&
@@ -534,7 +534,7 @@ function AnnotationsPanel({ entries }: { entries: Entry[] }) {
             {(['annotation', 'excerpt'] as const).map(t => (
               <button
                 key={t}
-                onClick={() => { setTab(t); setBookFilter(null) }}
+                onClick={() => { setTab(t); setBookFilter(null); onTabChange?.(t) }}
                 style={{
                   padding: '0 0 6px', border: 'none',
                   borderBottom: tab === t ? `1.5px solid ${C.fg}` : '1.5px solid transparent',
@@ -794,6 +794,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const excerptsRequested = useRef(false)
 
   const handleDeleteBook = async (bookId: string | number) => {
     await api.deleteBook(bookId)
@@ -815,61 +816,62 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     }, ...current.filter(book => book.id !== imported.id)])
   }
 
+  const loadExcerpts = (tab: 'annotation' | 'excerpt') => {
+    if (tab !== 'excerpt' || excerptsRequested.current) return
+    excerptsRequested.current = true
+    void api.listLibraryExcerpts(20).then(({ items }) => {
+      setEntries(current => [
+        ...current.filter(entry => entry.type !== 'excerpt'),
+        ...items.map(excerpt => ({
+          id: excerpt.id,
+          type: 'excerpt' as const,
+          text: excerpt.selected_text,
+          page: excerpt.chapter_index,
+          bookTitle: excerpt.book_title,
+          bookId: excerpt.book_id,
+          date: excerpt.created_at.slice(0, 10),
+        })),
+      ])
+    }).catch(loadError => {
+      excerptsRequested.current = false
+      setError(isUnauthorized(loadError) ? '请先在后端建立会话后再访问书架。' : (loadError as Error).message)
+    })
+  }
+
   useEffect(() => {
     let cancelled = false
     async function load() {
       try {
-        await api.me()
-        const apiBooks = await api.listBooks()
-        const chapters = await Promise.all(apiBooks.map(book => api.listChapters(book.id)))
-        const progress = await Promise.all(apiBooks.map(book => api.getProgress(book.id)))
-        const [annotations, excerpts, bookNotes] = await Promise.all([
-          Promise.all(apiBooks.map(book => api.listAnnotations(book.id))),
-          Promise.all(apiBooks.map(book => api.listExcerpts(book.id))),
-          Promise.all(apiBooks.map(book => api.listNotes(book.id))),
+        const [apiBooks, annotations, bookNotes] = await Promise.all([
+          api.listLibraryBooks(),
+          api.listLibraryAnnotations(20),
+          api.listLibraryNotes(10),
         ])
         if (cancelled) return
-        const chapterCounts = new Map(apiBooks.map((book, index) => [book.id, chapters[index].length]))
-        const chapterIndexes = new Map(chapters.flat().map(chapter => [chapter.id, chapter.chapter_index]))
-        setBooks(apiBooks.map((book, index) => {
-          const total = chapterCounts.get(book.id) || 0
-          const current = progress[index]?.furthest_read_chapter_id ? (chapterIndexes.get(progress[index]!.furthest_read_chapter_id!) ?? 0) + 1 : 0
-          return {
+        setBooks(apiBooks.map((book, index) => ({
             id: book.id,
             title: book.title,
-            author: book.author || book.import_file.file_format.toUpperCase(),
+            author: book.author || 'Unknown',
             color: C.bookCovers[index % 5],
-            status: current === 0 ? 'to-read' : total > 0 && current >= total ? 'read' : 'reading',
-            progress: total > 0 ? Math.round((current / total) * 100) : 0,
-          }
-        }))
-        setEntries([
-          ...annotations.flatMap((items, bookIndex) => items.map(annotation => ({
+            status: book.progress_percent === 0 ? 'to-read' : book.progress_percent >= 100 ? 'read' : 'reading',
+            progress: book.progress_percent,
+        })))
+        setEntries(annotations.items.map(annotation => ({
           id: annotation.id,
           type: 'annotation' as const,
           text: annotation.note_content || annotation.selected_text,
-          page: chapterIndexes.get(annotation.chapter_id) ?? 0,
-          bookTitle: apiBooks[bookIndex].title,
-          bookId: apiBooks[bookIndex].id,
+          page: annotation.chapter_index,
+          bookTitle: annotation.book_title,
+          bookId: annotation.book_id,
           date: annotation.created_at.slice(0, 10),
-          }))),
-          ...excerpts.flatMap((items, bookIndex) => items.map(excerpt => ({
-          id: excerpt.id,
-          type: 'excerpt' as const,
-          text: excerpt.selected_text,
-          page: chapterIndexes.get(excerpt.chapter_id) ?? 0,
-          bookTitle: apiBooks[bookIndex].title,
-          bookId: apiBooks[bookIndex].id,
-          date: excerpt.created_at.slice(0, 10),
-          }))),
-        ])
-        setNotes(bookNotes.flatMap((items, bookIndex) => items.map(note => ({
+        })))
+        setNotes(bookNotes.items.map(note => ({
           id: note.id,
           title: note.title,
           date: note.updated_at.slice(0, 10),
-          bookTitle: apiBooks[bookIndex].title,
-          bookId: apiBooks[bookIndex].id,
-        }))))
+          bookTitle: note.book_title,
+          bookId: note.book_id,
+        })))
       } catch (loadError) {
         if (!cancelled) setError(isUnauthorized(loadError) ? '请先在后端建立会话后再访问书架。' : (loadError as Error).message)
       } finally {
@@ -897,7 +899,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
 
       {/* Right: Annotations (top) + Notes (bottom) */}
       <div style={{ display: 'grid', gridTemplateRows: '6fr 4fr', rowGap: 12, padding: '12px 12px 12px 0', overflow: 'hidden' }}>
-        <AnnotationsPanel entries={entries} />
+        <AnnotationsPanel entries={entries} onTabChange={loadExcerpts} />
         <NotesPanel notes={notes} />
       </div>
 
@@ -909,6 +911,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
 
 export default function App() {
   const [path, setPath] = useState(() => window.location.pathname)
+  const [readingBootstrap, setReadingBootstrap] = useState<ApiReadingBootstrap | undefined>()
 
   useEffect(() => {
     const handlePopState = () => setPath(window.location.pathname)
@@ -924,7 +927,7 @@ export default function App() {
   if (path === '/settings') return <SettingsPage onNavigate={navigate} />
   if (path === '/login' || path === '/register') return <AuthPage mode={path === '/register' ? 'register' : 'login'} onNavigate={navigate} />
   if (path === '/library') return <LibraryApp onNavigate={navigate} />
-  if (path === '/paratext') return <ParatextPage onNavigate={navigate} />
-  if (path === '/read') return <ReadingPage />
+  if (path === '/paratext') return <ParatextPage onNavigate={navigate} onOpenReading={(nextPath, bootstrap) => { setReadingBootstrap(bootstrap); navigate(nextPath) }} />
+  if (path === '/read') return <ReadingPage bootstrap={readingBootstrap} />
   return <LandingCover onNavigate={navigate} />
 }

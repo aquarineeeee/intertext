@@ -70,6 +70,7 @@ class Annotation(Base):
     __tablename__ = "annotations"
     __table_args__ = (
         Index("ix_annotations_user_book", "user_id", "book_id"),
+        Index("ix_annotations_user_created_id", "user_id", "created_at", "id"),
         Index("ix_annotations_chapter", "chapter_id"),
         CheckConstraint("start_offset >= 0", name="ck_annotations_start_offset"),
         CheckConstraint("end_offset > start_offset", name="ck_annotations_offset_order"),
@@ -100,6 +101,7 @@ class Excerpt(Base):
     __tablename__ = "excerpts"
     __table_args__ = (
         Index("ix_excerpts_user_book", "user_id", "book_id"),
+        Index("ix_excerpts_user_created_id", "user_id", "created_at", "id"),
         Index("ix_excerpts_chapter", "chapter_id"),
         CheckConstraint("start_offset >= 0", name="ck_excerpts_start_offset"),
         CheckConstraint("end_offset > start_offset", name="ck_excerpts_offset_order"),

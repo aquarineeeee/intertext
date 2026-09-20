@@ -17,6 +17,10 @@ def _client(settings: Settings) -> TestClient:
     def write() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/api/v1/ai/runs/{run_id}/transcript")
+    def transcript(run_id: str) -> dict[str, str]:
+        return {"run_id": run_id}
+
     return TestClient(app)
 
 
@@ -36,3 +40,11 @@ def test_cookie_unsafe_request_rejects_untrusted_origin() -> None:
         response = client.post("/write", headers={"Origin": "https://attacker.example"})
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "csrf_failed"
+
+
+def test_transcript_reads_do_not_exhaust_general_api_budget() -> None:
+    with _client(Settings(rate_limit_requests=1, rate_limit_window_seconds=60)) as client:
+        assert client.get("/api/v1/ai/runs/first/transcript").status_code == 200
+        assert client.get("/ping").status_code == 200
+        assert client.get("/ping").status_code == 429
+        assert client.get("/api/v1/ai/runs/second/transcript").status_code == 429

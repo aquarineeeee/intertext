@@ -11,6 +11,7 @@ class Note(Base):
     __tablename__ = "notes"
     __table_args__ = (
         Index("ix_notes_user_book", "user_id", "book_id"),
+        Index("ix_notes_user_updated_id", "user_id", "updated_at", "id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
