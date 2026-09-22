@@ -11,6 +11,7 @@ import {
 } from "./api"
 import ConfirmDialog from "./ConfirmDialog"
 import { palette } from "./theme"
+import RangeSlider from "./RangeSlider"
 
 type SectionId = "reading-log" | "appearance" | "companion" | "data" | "account"
 type Provider = "openai" | "anthropic" | "ollama" | "others"
@@ -687,13 +688,7 @@ export default function SettingsPage({
           <Row label="Text size">
             <div className="settings-range">
               <span>A</span>
-              <input
-                type="range"
-                min={12}
-                max={24}
-                value={textSize}
-                onChange={(event) => setTextSize(+event.target.value)}
-              />
+              <RangeSlider min={12} max={24} value={textSize} onChange={setTextSize} ariaLabel="Text size" />
               <b>A</b>
               <em>{textSize}px</em>
             </div>
@@ -702,14 +697,7 @@ export default function SettingsPage({
           <Row label="Line height">
             <div className="settings-range">
               <span>Compact</span>
-              <input
-                type="range"
-                min={1}
-                max={2}
-                step={0.05}
-                value={lineHeight}
-                onChange={(event) => setLineHeight(+event.target.value)}
-              />
+              <RangeSlider min={1} max={2} step={0.05} value={lineHeight} onChange={setLineHeight} ariaLabel="Line height" />
               <span>Airy</span>
             </div>
           </Row>

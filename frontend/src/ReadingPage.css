@@ -41,7 +41,7 @@
   cursor: pointer;
 }
 
-.reading-menu-button { font-size: 21px; line-height: 1; }
+.reading-menu-button { position: fixed; z-index: 6; top: 16px; left: 16px; font-size: 21px; line-height: 1; }
 .reading-menu-button:hover,
 .reading-control:hover { color: var(--color-ink); background: var(--color-surface); }
 
@@ -73,8 +73,16 @@
 
 .reading-settings-title { margin-bottom: 12px; color: var(--color-ink); font-size: 13px; }
 .reading-settings label { display: grid; grid-template-columns: 38px 1fr 42px; align-items: center; gap: 8px; margin-top: 10px; color: var(--color-mid); font-size: 12px; }
-.reading-settings input[type='range'] { width: 100%; accent-color: var(--color-ink); }
+.reading-settings .range-slider { width: 100%; }
+.reading-settings .range-slider::-webkit-slider-runnable-track { height: 2px; border-radius: 2px; background: var(--color-rule); }
+.reading-settings .range-slider::-webkit-slider-thumb { width: 10px; height: 10px; margin-top: -4px; border: 0; border-radius: 50%; background: var(--color-ink); appearance: none; }
+.reading-settings .range-slider::-moz-range-track { height: 2px; border-radius: 2px; background: var(--color-rule); }
+.reading-settings .range-slider::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: var(--color-ink); }
 .reading-settings label span { text-align: right; color: var(--color-ink); font-size: 11px; }
+.reading-mode-options { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-rule); }
+.reading-mode-options label { display: flex; grid-template-columns: none; justify-content: flex-start; gap: 8px; margin-top: 0; }
+.reading-mode-options input { accent-color: var(--color-ink); }
+.reading-mode-options small { display: block; margin: 5px 0 0 22px; color: var(--color-faint); font-size: 11px; }
 
 .reading-next-chapter {
   margin: 4.5rem 0 2.75rem;
@@ -85,6 +93,11 @@
   font-weight: 400;
   line-height: 1.3;
 }
+
+.reading-chapter-navigation { display: flex; justify-content: flex-end; gap: 14px; margin: 4rem 0 1rem; }
+.reading-chapter-navigation button { padding: 6px 0; border: 0; color: var(--color-mid); background: transparent; cursor: pointer; }
+.reading-chapter-navigation button:hover:not(:disabled) { color: var(--color-ink); }
+.reading-chapter-navigation button:disabled { opacity: .35; cursor: default; }
 
 .reading-note-popover {
   position: fixed;

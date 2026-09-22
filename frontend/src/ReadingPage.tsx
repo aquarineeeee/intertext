@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api, isUnauthorized, type ApiAIRunTranscriptEntry, type ApiAnnotation, type ApiBook, type ApiChapter, type ApiConversation, type ApiMessage, type ApiReadingBootstrap, type ApiReadingContext, type ApiReadingContextMessage } from './api'
 import { palette } from './theme'
+import RangeSlider from './RangeSlider'
 import './ReadingPage.css'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -315,10 +316,6 @@ interface AEProps {
 }
 
 function AnnotationEntry({ ann, active, onHover, onToHighlight, onToggle, replyVal, onReplyChange, onReplySubmit, isTyping }: AEProps) {
-  const preview = ann.selectedText.length > 38
-    ? ann.selectedText.slice(0, 38) + '…'
-    : ann.selectedText
-
   const collapsed = !ann.expanded && ann.messages.length > COLLAPSE_AT
   const visibleMsgs = collapsed ? ann.messages.slice(0, 2) : ann.messages
   const showInput = !collapsed && !isTyping && ann.type === 'discussion'
@@ -334,16 +331,6 @@ function AnnotationEntry({ ann, active, onHover, onToHighlight, onToggle, replyV
         onToHighlight(ann.id)
       }}
     >
-      {/* Source reference */}
-      <button
-        className="w-full text-left mb-2"
-        onClick={() => onToHighlight(ann.id)}
-      >
-        <span className="reading-hover-mid text-xs text-faint transition-colors italic" style={{ fontFamily: 'var(--font-ui)' }}>
-          &ldquo;{preview}&rdquo;
-        </span>
-      </button>
-
       {/* Bookmark */}
       {ann.type === 'bookmark' && (
         <p className="text-sm text-mid" style={{ fontFamily: 'var(--font-ui)' }}>已加书签</p>
@@ -428,7 +415,7 @@ function TOCDrawer({ open, onClose, chapters, book, currentChapterId, onSelect, 
       >
         <div className="pt-14 px-5 pb-8">
           <div className="mb-6">
-            <button type="button" className="reading-book-link text-left text-sm text-ink" style={{ fontFamily: 'var(--font-ui)', fontWeight: 500 }} onClick={onBookClick}>{book.title}</button>
+            <button type="button" className="reading-book-link text-left text-sm text-ink" style={{ fontFamily: 'var(--font-ui)', fontWeight: 500 }} onClick={onBookClick}><span aria-hidden="true">←</span><span>{book.title}</span></button>
             <p className="text-xs text-faint mt-0.5" style={{ fontFamily: 'var(--font-ui)' }}>{book.author}</p>
           </div>
           <nav className="space-y-0.5">
@@ -451,10 +438,10 @@ function TOCDrawer({ open, onClose, chapters, book, currentChapterId, onSelect, 
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-const TOOLBAR_ITEMS: { action: AnnType; label: string; icon: string }[] = [
-  { action: 'bookmark',   label: '书签', icon: '🔖' },
-  { action: 'annotation', label: '批注', icon: 'A' },
-  { action: 'discussion', label: '问AI', icon: '✦' },
+const TOOLBAR_ITEMS: { action: AnnType; label: string}[] = [
+  { action: 'bookmark',   label: '摘录'},
+  { action: 'annotation', label: '批注'},
+  { action: 'discussion', label: '共读'},
 ]
 
 export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) {
@@ -491,6 +478,7 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
   const [fontSize, setFontSize] = useState(() => Number(window.localStorage.getItem('intertext-reading-font-size') || 17))
   const [lineHeight, setLineHeight] = useState(() => Number(window.localStorage.getItem('intertext-reading-line-height') || 1.88))
   const [loadingNext, setLoadingNext] = useState(false)
+  const [readingMode, setReadingMode] = useState<'chapter' | 'continuous'>(() => window.localStorage.getItem('intertext-reading-mode') === 'continuous' ? 'continuous' : 'chapter')
   const [noteComposerOpen, setNoteComposerOpen] = useState(false)
   const [newNoteTitle, setNewNoteTitle] = useState('')
   const [newNoteContent, setNewNoteContent] = useState('')
@@ -554,6 +542,17 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
 
   useEffect(() => { window.localStorage.setItem('intertext-reading-font-size', String(fontSize)) }, [fontSize])
   useEffect(() => { window.localStorage.setItem('intertext-reading-line-height', String(lineHeight)) }, [lineHeight])
+  useEffect(() => { window.localStorage.setItem('intertext-reading-mode', readingMode) }, [readingMode])
+
+  useEffect(() => {
+    if (!settingsOpen) return
+    const closeOnOutside = (event: PointerEvent) => {
+      const target = event.target as Element
+      if (!target.closest('.reading-settings, [aria-label="阅读设置"]')) setSettingsOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutside)
+    return () => document.removeEventListener('pointerdown', closeOnOutside)
+  }, [settingsOpen])
 
   const loadNextChapter = async () => {
     if (!book || !chapterId || loadingNext) return
@@ -920,6 +919,7 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
     window.setTimeout(() => {
       refreshConnector()
       flashEl(`[data-annotation-entry="${id}"]`, 'flash-entry')
+      setSelectedAnnotationId(current => current === id ? null : current)
     }, 350)
   }
 
@@ -927,7 +927,10 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
     setSelectedAnnotationId(id)
     const el = document.querySelector(`[data-annotation-id="${id}"][data-highlight]`)
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    setTimeout(() => flashEl(`[data-annotation-id="${id}"][data-highlight]`, 'flash-span'), 300)
+    setTimeout(() => {
+      flashEl(`[data-annotation-id="${id}"][data-highlight]`, 'flash-span')
+      setSelectedAnnotationId(current => current === id ? null : current)
+    }, 300)
   }
 
   useEffect(() => {
@@ -940,6 +943,21 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
 
   const toggleExpand = (id: string) => {
     setAnnotations(prev => prev.map(a => a.id === id ? { ...a, expanded: !a.expanded } : a))
+  }
+
+  const navigateToChapter = (id?: string) => {
+    if (!id) return
+    const params = new URLSearchParams(window.location.search)
+    params.set('chapterId', id)
+    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`)
+    window.location.reload()
+  }
+
+  const handleReadingModeChange = (continuous: boolean) => {
+    const nextMode = continuous ? 'continuous' : 'chapter'
+    window.localStorage.setItem('intertext-reading-mode', nextMode)
+    setReadingMode(nextMode)
+    if (!continuous) window.setTimeout(() => window.location.reload(), 0)
   }
 
   const handleAnnotationResizeStart = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1001,7 +1019,7 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
           onMouseUp={handleMouseUp}
           onScroll={event => {
             const el = event.currentTarget
-            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) void loadNextChapter()
+            if (readingMode === 'continuous' && el.scrollTop + el.clientHeight >= el.scrollHeight - 80) void loadNextChapter()
           }}
         >
           <div className="reading-content mx-auto px-6 py-10">
@@ -1019,6 +1037,20 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
                 </p>
               ))}
             </div>
+            {readingMode === 'chapter' && (
+              <div className="reading-chapter-navigation" style={{ fontFamily: 'var(--font-ui)' }}>
+                <button
+                  type="button"
+                  disabled={!chapters[chapters.findIndex(item => item.id === chapterId) - 1]}
+                  onClick={() => navigateToChapter(chapters[chapters.findIndex(item => item.id === chapterId) - 1]?.id)}
+                >← 上一章</button>
+                <button
+                  type="button"
+                  disabled={!chapters[chapters.findIndex(item => item.id === chapterId) + 1]}
+                  onClick={() => navigateToChapter(chapters[chapters.findIndex(item => item.id === chapterId) + 1]?.id)}
+                >下一章 →</button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1123,8 +1155,15 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
       {settingsOpen && (
         <div className="reading-settings" style={{ fontFamily: 'var(--font-ui)' }}>
           <div className="reading-settings-title">阅读设置</div>
-          <label>字号 <input type="range" min="14" max="24" step="1" value={fontSize} onChange={e => setFontSize(Number(e.target.value))} /><span>{fontSize}px</span></label>
-          <label>行距 <input type="range" min="1.4" max="2.4" step="0.05" value={lineHeight} onChange={e => setLineHeight(Number(e.target.value))} /><span>{lineHeight.toFixed(2)}</span></label>
+          <label>字号 <RangeSlider min={14} max={24} step={1} value={fontSize} onChange={setFontSize} ariaLabel="字号" size="compact" /><span>{fontSize}px</span></label>
+          <label>行距 <RangeSlider min={1.4} max={2.4} step={0.05} value={lineHeight} onChange={setLineHeight} ariaLabel="行距" size="compact" /><span>{lineHeight.toFixed(2)}</span></label>
+          <div className="reading-mode-options">
+            <label>
+              <input type="checkbox" checked={readingMode === 'continuous'} onChange={event => handleReadingModeChange(event.target.checked)} />
+              <span>连续阅读</span>
+            </label>
+            <small>{readingMode === 'continuous' ? '滚动到底部自动载入下一章' : '一次阅读一章'}</small>
+          </div>
         </div>
       )}
 
@@ -1152,7 +1191,7 @@ export default function App({ bootstrap }: { bootstrap?: ApiReadingBootstrap }) 
             boxShadow: '0 2px 10px rgba(42,33,24,0.08)',
           }}
         >
-          {TOOLBAR_ITEMS.map(({ action, label, icon }, idx) => (
+          {TOOLBAR_ITEMS.map(({ action, label }, idx) => (
             <Fragment key={action}>
               {idx > 0 && <div className="w-px h-3.5 bg-rule mx-0.5" />}
               <button
