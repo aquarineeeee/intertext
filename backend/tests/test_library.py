@@ -146,6 +146,20 @@ def test_library_summary_and_timelines(library_client: TestClient) -> None:
     assert [(item["id"], item["book_title"], item["chapter_title"]) for item in excerpts["items"]] == [("excerpt-1", "Intertext", "One")]
 
 
+def test_library_notes_can_be_standalone_or_linked(library_client: TestClient) -> None:
+    standalone = library_client.post("/api/v1/library/notes", json={"title": "独立笔记", "content": "随手记"})
+    assert standalone.status_code == 201
+    assert standalone.json()["book_id"] is None
+    assert standalone.json()["book_title"] is None
+
+    linked = library_client.post("/api/v1/library/notes", json={"title": "关联笔记", "content": "书中想法", "book_id": "book-1"})
+    assert linked.status_code == 201
+    assert linked.json()["book_id"] == "book-1"
+    assert linked.json()["book_title"] == "Intertext"
+
+    notes = library_client.get("/api/v1/library/notes").json()["items"]
+    assert {item["title"] for item in notes} >= {"独立笔记", "关联笔记"}
+
 def test_reading_context_is_chapter_scoped_and_embeds_transcript(library_client: TestClient) -> None:
     response = library_client.get("/api/v1/books/book-1/chapters/chapter-1/reading-context")
     assert response.status_code == 200

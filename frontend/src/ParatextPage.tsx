@@ -3,6 +3,7 @@ import { api, isUnauthorized, type ApiAnnotation, type ApiBook, type ApiChapter,
 import { palette as C } from './theme'
 import ConfirmDialog from './ConfirmDialog'
 import EntryDetailModal from './EntryDetailModal'
+import NoteComposer from './NoteComposer'
 import './ParatextPage.css'
 
 interface ParatextPageProps {
@@ -66,8 +67,6 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [noteComposerOpen, setNoteComposerOpen] = useState(false)
-  const [newNoteTitle, setNewNoteTitle] = useState('')
-  const [newNoteContent, setNewNoteContent] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -186,15 +185,13 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
     onNavigate(path)
   }
 
-  const handleCreateNote = async () => {
-    if (!book || !newNoteContent.trim() || noteSaving) return
+  const handleCreateNote = async (title: string, content: string) => {
+    if (!book || !content.trim() || noteSaving) return
     setNoteSaving(true)
     setNoteError(null)
     try {
-      const note = await api.createNote(book.id, newNoteTitle.trim() || '阅读笔记', newNoteContent.trim())
+      const note = await api.createNote(book.id, title.trim() || '阅读笔记', content.trim())
       setNotes(current => [note, ...current])
-      setNewNoteTitle('')
-      setNewNoteContent('')
       setNoteComposerOpen(false)
     } catch (saveError) {
       setNoteError(saveError instanceof Error ? saveError.message : 'Unable to save this note.')
@@ -202,7 +199,6 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
       setNoteSaving(false)
     }
   }
-
   const openEntryModal = (entry: LedgerEntry, mode: 'view' | 'edit' = 'view') => {
     const requestId = entryMessageRequest.current + 1
     entryMessageRequest.current = requestId
@@ -412,33 +408,15 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
         </section>
       </div>
 
-      {noteComposerOpen && (
-        <div className="paratext-note-modal-backdrop">
-          <div className="paratext-note-modal" role="dialog" aria-modal="true" aria-label="New note">
-            <div className="paratext-note-title">New note</div>
-            <input
-              value={newNoteTitle}
-              onChange={event => setNewNoteTitle(event.target.value)}
-              placeholder="Title (optional)"
-              autoFocus
-            />
-            <textarea
-              value={newNoteContent}
-              onChange={event => setNewNoteContent(event.target.value)}
-              placeholder="Write your thoughts…"
-              rows={7}
-            />
-            {noteError && <p className="paratext-note-error">{noteError}</p>}
-            <div className="paratext-note-actions">
-              <button type="button" onClick={() => setNoteComposerOpen(false)}>Cancel</button>
-              <button type="button" disabled={!newNoteContent.trim() || noteSaving} onClick={() => void handleCreateNote()}>
-                {noteSaving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {noteComposerOpen && book && (
+        <NoteComposer
+          books={[{ id: book.id, title: book.title }]}
+          saving={noteSaving}
+          error={noteError}
+          onClose={() => { if (!noteSaving) setNoteComposerOpen(false) }}
+          onSave={(title, content) => { void handleCreateNote(title, content) }}
+        />
       )}
-
       {selectedEntry && (
         <EntryDetailModal
           entry={{

@@ -7,6 +7,7 @@ import ReadingPage from './ReadingPage'
 import ParatextPage from './ParatextPage'
 import ConfirmDialog from './ConfirmDialog'
 import EntryDetailModal from './EntryDetailModal'
+import NoteComposer from './NoteComposer'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const SECTION_HEADER_HEIGHT = 114
@@ -81,7 +82,7 @@ interface Note {
   content: string
   date: string
   bookTitle: string | null
-  bookId: string | number
+  bookId: string | number | null
 }
 
 function PanelSearch({ onSearch }: { onSearch: (query: string) => void }) {
@@ -683,9 +684,25 @@ function AnnotationsPanel({ entries, onTabChange, onNavigate }: { entries: Entry
 }
 
 // ─── Notes Panel ─────────────────────────────────────────────────────────────
-function NotesPanel({ notes }: { notes: Note[] }) {
+function NotesPanel({ notes, books, onCreate }: { notes: Note[]; books: Book[]; onCreate: (title: string, content: string, bookId?: string) => Promise<void> }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const createNote = async (title: string, content: string, bookId?: string) => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onCreate(title, content, bookId)
+      setComposerOpen(false)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Unable to save this note.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const filtered = notes.filter(
     n => searchQuery === '' || n.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -700,6 +717,15 @@ function NotesPanel({ notes }: { notes: Note[] }) {
       }}>
         <h2 style={{ fontFamily: "'Lora', serif", fontSize: 20, fontWeight: 500, color: C.fg, margin: 0 }}>
           Notes
+          <button
+            type="button"
+            onClick={() => { setSaveError(null); setComposerOpen(true) }}
+            aria-label="新建笔记"
+            title="新建笔记"
+            style={{ marginLeft: 7, padding: 0, border: 0, background: 'transparent', color: C.muted, font: '400 22px/1 "Source Sans 3", sans-serif', cursor: 'pointer' }}
+          >
+            +
+          </button>
         </h2>
 
         <PanelSearch onSearch={setSearchQuery} />
@@ -759,6 +785,16 @@ function NotesPanel({ notes }: { notes: Note[] }) {
           </div>
         ))}
       </div>
+
+      {composerOpen && (
+        <NoteComposer
+          books={books}
+          saving={saving}
+          error={saveError}
+          onClose={() => { if (!saving) setComposerOpen(false) }}
+          onSave={(title, content, bookId) => { void createNote(title, content, bookId) }}
+        />
+      )}
 
       {selectedNote && (
         <EntryDetailModal
@@ -880,6 +916,17 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
     setNotes(current => current.filter(n => n.bookId !== bookId))
   }
 
+  const handleCreateNote = async (title: string, content: string, bookId?: string) => {
+    const created = await api.createLibraryNote(title, content, bookId)
+    setNotes(current => [{
+      id: created.id,
+      title: created.title,
+      content: created.content,
+      date: created.updated_at.slice(0, 10),
+      bookTitle: created.book_title,
+      bookId: created.book_id,
+    }, ...current])
+  }
   const handleBookImported = async (file: File) => {
     const imported = await api.importBook(file)
     const format = imported.import_file.file_format.toUpperCase()
@@ -986,7 +1033,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
       {/* Right: Annotations (top) + Notes (bottom) */}
       <div style={{ display: 'grid', gridTemplateRows: '6fr 4fr', rowGap: 12, padding: '12px 12px 12px 0', overflow: 'hidden' }}>
         <AnnotationsPanel entries={entries} onTabChange={loadExcerpts} onNavigate={onNavigate} />
-        <NotesPanel notes={notes} />
+        <NotesPanel notes={notes} books={books} onCreate={handleCreateNote} />
       </div>
 
       {/* Floating settings entry */}

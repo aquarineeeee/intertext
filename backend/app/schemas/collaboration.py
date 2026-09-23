@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class NoteCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     content: str = Field(default="", max_length=100_000)
+    book_id: str | None = Field(default=None, min_length=1, max_length=36)
 
 
 class NoteUpdateRequest(BaseModel):
@@ -18,7 +19,7 @@ class NoteResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    book_id: str
+    book_id: str | None
     title: str
     content: str
     created_at: datetime

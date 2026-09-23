@@ -96,7 +96,7 @@ export type ApiExcerpt = {
 
 export type ApiNote = {
   id: string
-  book_id: string
+  book_id: string | null
   title: string
   content: string
   created_at: string
@@ -210,7 +210,7 @@ export type ApiLibraryExcerpt = {
   created_at: string
 }
 
-export type ApiLibraryNote = ApiNote & { book_title: string }
+export type ApiLibraryNote = ApiNote & { book_title: string | null }
 
 export type ApiCursorPage<T> = {
   items: T[]
@@ -327,6 +327,8 @@ export const api = {
   listLibraryBooks: () => request<ApiLibraryBook[]>('/library/books'),
   listLibraryAnnotations: (limit = 20) => request<ApiCursorPage<ApiLibraryAnnotation>>(`/library/annotations?limit=${limit}`),
   listLibraryNotes: (limit = 10) => request<ApiCursorPage<ApiLibraryNote>>(`/library/notes?limit=${limit}`),
+  createLibraryNote: (title: string, content: string, bookId?: string) =>
+    request<ApiLibraryNote>('/library/notes', { method: 'POST', body: JSON.stringify({ title, content, book_id: bookId || null }) }),
   listLibraryExcerpts: (limit = 20) => request<ApiCursorPage<ApiLibraryExcerpt>>(`/library/excerpts?limit=${limit}`),
   listChapters: (bookId: string) => request<ApiChapter[]>(`/books/${bookId}/chapters`),
   getChapter: (bookId: string, chapterId: string) => request<ApiChapterContent>(`/books/${bookId}/chapters/${chapterId}`),

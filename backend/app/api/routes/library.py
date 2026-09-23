@@ -18,7 +18,9 @@ from app.schemas.library import (
     LibraryAnnotationPage,
     LibraryBookResponse,
     LibraryExcerptPage,
+    LibraryNoteCreateRequest,
     LibraryNotePage,
+    LibraryNoteResponse,
     ReadingContextResponse,
 )
 
@@ -179,8 +181,8 @@ def list_library_notes(
 ) -> dict:
     statement = (
         select(Note, Book.title)
-        .join(Book, Book.id == Note.book_id)
-        .where(Note.user_id == user.id, Book.user_id == user.id)
+        .outerjoin(Book, and_(Book.id == Note.book_id, Book.user_id == user.id))
+        .where(Note.user_id == user.id)
     )
     if book_id is not None:
         statement = statement.where(Note.book_id == book_id)
@@ -208,6 +210,31 @@ def list_library_notes(
     next_cursor = _encode_cursor(rows[-1][0].updated_at, rows[-1][0].id) if has_more else None
     return {"items": items, "next_cursor": next_cursor}
 
+
+@router.post("/library/notes", response_model=LibraryNoteResponse, status_code=201)
+def create_library_note(
+    payload: LibraryNoteCreateRequest,
+    db: DbSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    book_title = None
+    if payload.book_id is not None:
+        book_title = db.scalar(select(Book.title).where(Book.id == payload.book_id, Book.user_id == user.id))
+        if book_title is None:
+            raise AppError(404, "book_not_found", "书籍不存在")
+    note = Note(user_id=user.id, book_id=payload.book_id, title=payload.title, content=payload.content)
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    return {
+        "id": note.id,
+        "book_id": note.book_id,
+        "book_title": book_title,
+        "title": note.title,
+        "content": note.content,
+        "created_at": note.created_at,
+        "updated_at": note.updated_at,
+    }
 
 @router.get("/library/excerpts", response_model=LibraryExcerptPage)
 def list_library_excerpts(

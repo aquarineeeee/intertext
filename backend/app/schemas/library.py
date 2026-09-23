@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LibraryBookResponse(BaseModel):
@@ -50,8 +50,8 @@ class LibraryExcerptPage(BaseModel):
 
 class LibraryNoteResponse(BaseModel):
     id: str
-    book_id: str
-    book_title: str
+    book_id: str | None
+    book_title: str | None
     title: str
     content: str
     created_at: datetime
@@ -61,6 +61,12 @@ class LibraryNoteResponse(BaseModel):
 class LibraryNotePage(BaseModel):
     items: list[LibraryNoteResponse]
     next_cursor: str | None
+
+
+class LibraryNoteCreateRequest(BaseModel):
+    book_id: str | None = Field(default=None, min_length=1, max_length=36)
+    title: str = Field(min_length=1, max_length=500)
+    content: str = Field(default="", max_length=100_000)
 
 
 class ReadingContextAnnotationResponse(BaseModel):
