@@ -18,6 +18,7 @@ type LedgerEntry = {
   sourceText?: string
   chapterId?: string
   note?: string
+  preview?: string
   title?: string
   date: string
   timestamp: number
@@ -138,10 +139,11 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
     ...annotations.map(annotation => ({
       id: `annotation-${annotation.id}`,
       kind: 'annotation' as const,
-      quote: annotation.first_user_message || `“${annotation.selected_text}”`,
+      quote: `“${annotation.selected_text}”`,
       sourceText: annotation.selected_text,
       chapterId: annotation.chapter_id,
       note: annotation.note_content || undefined,
+      preview: annotation.first_user_message || annotation.note_content || undefined,
       date: annotation.created_at,
       timestamp: Date.parse(annotation.created_at) || 0,
       sourceId: annotation.id,
@@ -400,7 +402,7 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
                           )}
                         </div>
                       </div>
-                      {entry.note && <p className="paratext-entry-note">{entry.note}</p>}
+                      {entry.preview && <p className="paratext-entry-note">{entry.preview}</p>}
                     </article>
                   ))}
                 </div>

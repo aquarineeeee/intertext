@@ -940,7 +940,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
         setEntries(annotations.items.map(annotation => ({
           id: annotation.id,
           type: 'annotation' as const,
-          text: annotation.first_user_message || annotation.note_content || annotation.selected_text,
+          text: annotation.selected_text,
           selectedText: annotation.selected_text,
           noteContent: annotation.note_content,
           firstUserMessage: annotation.first_user_message,
