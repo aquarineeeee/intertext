@@ -684,12 +684,39 @@ function AnnotationsPanel({ entries, onTabChange, onNavigate }: { entries: Entry
 }
 
 // ─── Notes Panel ─────────────────────────────────────────────────────────────
-function NotesPanel({ notes, books, onCreate }: { notes: Note[]; books: Book[]; onCreate: (title: string, content: string, bookId?: string) => Promise<void> }) {
+function NotesPanel({ notes, books, onCreate, onUpdate }: { notes: Note[]; books: Book[]; onCreate: (title: string, content: string, bookId?: string) => Promise<void>; onUpdate: (id: string, changes: { title?: string; content?: string; book_id?: string | null }) => Promise<void> }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [modalMode, setModalMode] = useState<'view' | 'edit'>('view')
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [modalSaving, setModalSaving] = useState(false)
+  const [modalError, setModalError] = useState<string | null>(null)
+
+  const currentNote = selectedNote && notes.find(note => note.id === selectedNote.id)
+  const openNote = (note: Note) => {
+    setSelectedNote(note)
+    setModalMode('view')
+    setEditTitle(note.title)
+    setEditContent(note.content)
+    setModalError(null)
+  }
+  const updateNote = async (changes: { title?: string; content?: string; book_id?: string | null }) => {
+    if (!currentNote || modalSaving) return
+    setModalSaving(true)
+    setModalError(null)
+    try {
+      await onUpdate(String(currentNote.id), changes)
+      if (!('book_id' in changes)) setSelectedNote(null)
+    } catch (error) {
+      setModalError(error instanceof Error ? error.message : '无法保存笔记。')
+    } finally {
+      setModalSaving(false)
+    }
+  }
 
   const createNote = async (title: string, content: string, bookId?: string) => {
     setSaving(true)
@@ -748,11 +775,11 @@ function NotesPanel({ notes, books, onCreate }: { notes: Note[]; books: Book[]; 
               gap: 12,
               transition: 'background 0.1s',
             }}
-            onClick={() => setSelectedNote(n)}
+            onClick={() => openNote(n)}
             onKeyDown={event => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
-                setSelectedNote(n)
+                openNote(n)
               }
             }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(81,74,69,0.03)')}
@@ -796,10 +823,21 @@ function NotesPanel({ notes, books, onCreate }: { notes: Note[]; books: Book[]; 
         />
       )}
 
-      {selectedNote && (
+      {currentNote && (
         <EntryDetailModal
-          entry={{ kind: 'note', title: selectedNote.title, content: selectedNote.content, date: selectedNote.date }}
-          onClose={() => setSelectedNote(null)}
+          entry={{ kind: 'note', title: currentNote.title, content: currentNote.content, date: currentNote.date, bookTitle: currentNote.bookTitle }}
+          mode={modalMode}
+          editTitle={editTitle}
+          editContent={editContent}
+          error={modalError}
+          saving={modalSaving}
+          onClose={() => { if (!modalSaving) setSelectedNote(null) }}
+          onEdit={() => { setEditTitle(currentNote.title); setEditContent(currentNote.content); setModalMode('edit') }}
+          onEditTitleChange={setEditTitle}
+          onEditContentChange={setEditContent}
+          onSave={() => { void updateNote({ title: editTitle.trim() || '阅读笔记', content: editContent.trim() }) }}
+          onRemoveBook={currentNote.bookId ? () => { void updateNote({ book_id: null }) } : undefined}
+          removingBook={modalSaving}
         />
       )}
     </div>
@@ -927,6 +965,17 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
       bookId: created.book_id,
     }, ...current])
   }
+  const handleUpdateNote = async (id: string, changes: { title?: string; content?: string; book_id?: string | null }) => {
+    const updated = await api.updateLibraryNote(id, changes)
+    setNotes(current => current.map(note => String(note.id) === id ? {
+      id: updated.id,
+      title: updated.title,
+      content: updated.content,
+      date: updated.updated_at.slice(0, 10),
+      bookTitle: updated.book_title,
+      bookId: updated.book_id,
+    } : note))
+  }
   const handleBookImported = async (file: File) => {
     const imported = await api.importBook(file)
     const format = imported.import_file.file_format.toUpperCase()
@@ -1033,7 +1082,7 @@ function LibraryApp({ onNavigate }: { onNavigate: (path: string) => void }) {
       {/* Right: Annotations (top) + Notes (bottom) */}
       <div style={{ display: 'grid', gridTemplateRows: '6fr 4fr', rowGap: 12, padding: '12px 12px 12px 0', overflow: 'hidden' }}>
         <AnnotationsPanel entries={entries} onTabChange={loadExcerpts} onNavigate={onNavigate} />
-        <NotesPanel notes={notes} books={books} onCreate={handleCreateNote} />
+        <NotesPanel notes={notes} books={books} onCreate={handleCreateNote} onUpdate={handleUpdateNote} />
       </div>
 
       {/* Floating settings entry */}

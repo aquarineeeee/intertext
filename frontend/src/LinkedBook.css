@@ -1,0 +1,5 @@
+.linked-book { display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; box-sizing: border-box; margin-top: 12px; padding: 5px 6px 5px 9px; border: 1px solid var(--color-border-mid); border-radius: 3px; color: var(--color-accent); background: rgba(81, 74, 69, .045); font: 12px/1.4 'Source Sans 3', system-ui, sans-serif; }
+.linked-book span { min-width: 0; overflow-wrap: anywhere; }
+.linked-book button { display: grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; margin: -3px -3px -3px 3px; padding: 0; border: 0; border-radius: 2px; color: var(--color-muted); background: transparent; cursor: pointer; }
+.linked-book button:hover, .linked-book button:focus-visible { color: var(--color-fg); background: rgba(81, 74, 69, .1); outline: 0; }
+.linked-book button:disabled { opacity: .4; cursor: default; }

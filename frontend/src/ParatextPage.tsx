@@ -411,6 +411,7 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
       {noteComposerOpen && book && (
         <NoteComposer
           books={[{ id: book.id, title: book.title }]}
+          fixedBook={{ id: book.id, title: book.title }}
           saving={noteSaving}
           error={noteError}
           onClose={() => { if (!noteSaving) setNoteComposerOpen(false) }}
@@ -425,6 +426,7 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
             quote: selectedEntry.sourceText,
             content: selectedEntry.kind === 'note' ? selectedEntry.quote : selectedEntry.note,
             date: selectedEntry.date,
+            bookTitle: selectedEntry.kind === 'note' ? book.title : undefined,
             messages: entryMessages,
           }}
           mode={entryModalMode}
@@ -439,6 +441,21 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
           onEditTitleChange={setEntryEditTitle}
           onEditContentChange={setEntryEditContent}
           onSave={() => void handleEntrySave()}
+          onRemoveBook={selectedEntry.kind === 'note' ? async () => {
+            if (entrySaving) return
+            setEntrySaving(true)
+            setEntryActionError(null)
+            try {
+              await api.updateLibraryNote(selectedEntry.sourceId, { book_id: null })
+              setNotes(current => current.filter(note => note.id !== selectedEntry.sourceId))
+              setSelectedEntry(null)
+            } catch (unlinkError) {
+              setEntryActionError(unlinkError instanceof Error ? unlinkError.message : '无法取消关联。')
+            } finally {
+              setEntrySaving(false)
+            }
+          } : undefined}
+          removingBook={entrySaving}
         />
       )}
 

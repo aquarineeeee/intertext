@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import type { ApiMessage } from './api'
+import LinkedBook from './LinkedBook'
 import './EntryDetailModal.css'
 
 export type EntryDetailKind = 'annotation' | 'excerpt' | 'note'
@@ -11,6 +12,7 @@ export type EntryDetailData = {
   quote?: string
   content?: string
   date: string
+  bookTitle?: string | null
   messages?: ApiMessage[]
 }
 
@@ -28,6 +30,8 @@ type EntryDetailModalProps = {
   onEditTitleChange?: (value: string) => void
   onEditContentChange?: (value: string) => void
   onSave?: () => void
+  onRemoveBook?: () => void
+  removingBook?: boolean
 }
 
 const labels: Record<EntryDetailKind, string> = {
@@ -56,6 +60,8 @@ export default function EntryDetailModal({
   onEditTitleChange,
   onEditContentChange,
   onSave,
+  onRemoveBook,
+  removingBook = false,
 }: EntryDetailModalProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -89,6 +95,10 @@ export default function EntryDetailModal({
         ) : entry.title ? (
           <h2 className="entry-detail-title">{entry.title}</h2>
         ) : null}
+
+        {entry.kind === 'note' && entry.bookTitle && (
+          <LinkedBook title={entry.bookTitle} onRemove={onRemoveBook} removing={removingBook} />
+        )}
 
         {entry.quote && (onOpenSource ? (
           <button type="button" className="entry-detail-quote entry-detail-quote-link" onClick={onOpenSource} title="在正文中查看">

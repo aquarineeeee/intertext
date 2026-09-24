@@ -329,6 +329,8 @@ export const api = {
   listLibraryNotes: (limit = 10) => request<ApiCursorPage<ApiLibraryNote>>(`/library/notes?limit=${limit}`),
   createLibraryNote: (title: string, content: string, bookId?: string) =>
     request<ApiLibraryNote>('/library/notes', { method: 'POST', body: JSON.stringify({ title, content, book_id: bookId || null }) }),
+  updateLibraryNote: (noteId: string, changes: { title?: string; content?: string; book_id?: string | null }) =>
+    request<ApiLibraryNote>(`/library/notes/${noteId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   listLibraryExcerpts: (limit = 20) => request<ApiCursorPage<ApiLibraryExcerpt>>(`/library/excerpts?limit=${limit}`),
   listChapters: (bookId: string) => request<ApiChapter[]>(`/books/${bookId}/chapters`),
   getChapter: (bookId: string, chapterId: string) => request<ApiChapterContent>(`/books/${bookId}/chapters/${chapterId}`),

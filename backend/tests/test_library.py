@@ -160,6 +160,23 @@ def test_library_notes_can_be_standalone_or_linked(library_client: TestClient) -
     notes = library_client.get("/api/v1/library/notes").json()["items"]
     assert {item["title"] for item in notes} >= {"独立笔记", "关联笔记"}
 
+
+def test_library_note_unlink_preserves_content_and_checks_ownership(library_client: TestClient) -> None:
+    assert library_client.patch("/api/v1/library/notes/note-new", json={"book_id": "book-2"}).status_code == 404
+    assert library_client.patch("/api/v1/library/notes/missing", json={"book_id": None}).status_code == 404
+
+    response = library_client.patch("/api/v1/library/notes/note-new", json={"book_id": None})
+    assert response.status_code == 200
+    assert response.json()["book_id"] is None
+    assert response.json()["book_title"] is None
+    assert response.json()["content"] == "find me"
+    assert all(note["id"] != "note-new" for note in library_client.get("/api/v1/books/book-1/notes").json())
+    assert any(note["id"] == "note-new" for note in library_client.get("/api/v1/library/notes").json()["items"])
+
+    edited = library_client.patch("/api/v1/library/notes/note-new", json={"title": "Edited"})
+    assert edited.json()["title"] == "Edited"
+    assert edited.json()["book_id"] is None
+
 def test_reading_context_is_chapter_scoped_and_embeds_transcript(library_client: TestClient) -> None:
     response = library_client.get("/api/v1/books/book-1/chapters/chapter-1/reading-context")
     assert response.status_code == 200

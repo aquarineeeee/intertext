@@ -21,6 +21,7 @@ from app.schemas.library import (
     LibraryNoteCreateRequest,
     LibraryNotePage,
     LibraryNoteResponse,
+    LibraryNoteUpdateRequest,
     ReadingContextResponse,
 )
 
@@ -235,6 +236,39 @@ def create_library_note(
         "created_at": note.created_at,
         "updated_at": note.updated_at,
     }
+
+
+@router.patch("/library/notes/{note_id}", response_model=LibraryNoteResponse)
+def update_library_note(
+    note_id: str,
+    payload: LibraryNoteUpdateRequest,
+    db: DbSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    note = db.scalar(select(Note).where(Note.id == note_id, Note.user_id == user.id))
+    if note is None:
+        raise AppError(404, "note_not_found", "Note 不存在")
+    if "book_id" in payload.model_fields_set:
+        if payload.book_id is not None and db.scalar(select(Book.id).where(Book.id == payload.book_id, Book.user_id == user.id)) is None:
+            raise AppError(404, "book_not_found", "书籍不存在")
+        note.book_id = payload.book_id
+    if payload.title is not None:
+        note.title = payload.title
+    if payload.content is not None:
+        note.content = payload.content
+    db.commit()
+    db.refresh(note)
+    book_title = db.scalar(select(Book.title).where(Book.id == note.book_id)) if note.book_id else None
+    return {
+        "id": note.id,
+        "book_id": note.book_id,
+        "book_title": book_title,
+        "title": note.title,
+        "content": note.content,
+        "created_at": note.created_at,
+        "updated_at": note.updated_at,
+    }
+
 
 @router.get("/library/excerpts", response_model=LibraryExcerptPage)
 def list_library_excerpts(

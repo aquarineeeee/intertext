@@ -69,6 +69,12 @@ class LibraryNoteCreateRequest(BaseModel):
     content: str = Field(default="", max_length=100_000)
 
 
+class LibraryNoteUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    content: str | None = Field(default=None, max_length=100_000)
+    book_id: str | None = Field(default=None, min_length=1, max_length=36)
+
+
 class ReadingContextAnnotationResponse(BaseModel):
     id: str
     book_id: str

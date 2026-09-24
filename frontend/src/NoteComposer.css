@@ -1,7 +1,7 @@
 .note-composer-backdrop { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; background: rgba(42, 33, 24, .42); }
 .note-composer { width: min(520px, 100%); padding: 22px 24px 20px; border: 1px solid var(--color-border-mid); border-radius: 4px; background: var(--color-bg); color: var(--color-fg); box-shadow: 0 18px 50px rgba(42,33,24,.2); }
 .note-composer-header { display: flex; align-items: center; justify-content: space-between; color: var(--color-fg); font: 600 12px 'Source Sans 3', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
-.note-composer-header button { width: 28px; height: 28px; margin: -7px -7px -7px 0; border: 0; background: transparent; color: var(--color-muted); font-size: 23px; line-height: 1; cursor: pointer; }
+.note-composer-header button { display: grid; place-items: center; width: 28px; height: 28px; margin: -7px -7px -7px 0; border: 0; background: transparent; color: var(--color-muted); cursor: pointer; }
 .note-composer input, .note-composer textarea { display: block; width: 100%; box-sizing: border-box; border: 1px solid var(--color-border-mid); border-radius: 3px; outline: 0; color: var(--color-fg); background: rgba(255,255,255,.28); font: 14px/1.6 'Source Sans 3', system-ui, sans-serif; }
 .note-composer input { margin-top: 16px; padding: 10px; }
 .note-composer-editor-wrap { position: relative; margin-top: 10px; }
@@ -13,7 +13,6 @@
 .note-composer-suggestions button:hover, .note-composer-suggestions button.is-active { background: rgba(81,74,69,.07); }
 .note-composer-suggestions span { color: var(--color-accent); }
 .note-composer-suggestions small { margin-left: auto; color: var(--color-muted); font-size: 10px; }
-.note-composer-linked { margin-top: 7px; color: var(--color-accent); font-size: 12px; }
 .note-composer-error { margin: 10px 0 0; color: var(--color-danger); font-size: 12px; }
 .note-composer-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .note-composer-actions button { min-height: 32px; padding: 5px 11px; border: 0; border-radius: 3px; color: var(--color-fg); background: rgba(81,74,69,.07); font: 13px 'Source Sans 3', system-ui, sans-serif; cursor: pointer; }
