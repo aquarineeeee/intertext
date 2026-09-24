@@ -106,7 +106,11 @@ export default function EntryDetailModal({
         ) : null}
 
         {entry.kind === 'note' && entry.bookTitle && (
-          <LinkedBook title={entry.bookTitle} onRemove={onRemoveBook} removing={removingBook} />
+          <LinkedBook
+            title={entry.bookTitle}
+            onRemove={mode === 'edit' ? onRemoveBook : undefined}
+            removing={removingBook}
+          />
         )}
 
         {entry.quote && (onOpenSource ? (
