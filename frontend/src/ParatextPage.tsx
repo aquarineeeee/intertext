@@ -56,6 +56,8 @@ function bookError(error: unknown): string {
   return error instanceof Error ? error.message : 'Unable to load this book.'
 }
 
+const uid = () => Math.random().toString(36).slice(2, 9)
+
 export default function ParatextPage({ onNavigate, onOpenReading, bookId }: ParatextPageProps) {
   const [book, setBook] = useState<ApiBook | null>(null)
   const [chapters, setChapters] = useState<ApiChapter[]>([])
@@ -80,6 +82,8 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
   const [entryDeleting, setEntryDeleting] = useState(false)
   const [entryMessages, setEntryMessages] = useState<ApiMessage[]>([])
   const [entryMessagesLoading, setEntryMessagesLoading] = useState(false)
+  const [entryFollowup, setEntryFollowup] = useState('')
+  const [entryFollowupSubmitting, setEntryFollowupSubmitting] = useState(false)
   const entryMessageRequest = useRef(0)
 
   const requestedBookId = bookId || new URLSearchParams(window.location.search).get('bookId') || undefined
@@ -209,6 +213,8 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
     setEntryEditTitle(entry.title || '')
     setEntryEditContent(entry.kind === 'annotation' ? (entry.note || '') : entry.kind === 'note' ? entry.quote : entry.quote)
     setEntryMessages([])
+    setEntryFollowup('')
+    setEntryFollowupSubmitting(false)
     if (mode === 'view' && entry.kind === 'annotation' && book) {
       setEntryMessagesLoading(true)
       void api.listAnnotationMessages(book.id, entry.sourceId)
@@ -221,10 +227,12 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
   }
 
   const closeEntryModal = () => {
-    if (entrySaving) return
+    if (entrySaving || entryFollowupSubmitting) return
     entryMessageRequest.current += 1
     setSelectedEntry(null)
     setEntryMessagesLoading(false)
+    setEntryFollowup('')
+    setEntryFollowupSubmitting(false)
     setEntryActionError(null)
   }
 
@@ -276,6 +284,41 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
       setEntryActionError(saveError instanceof Error ? saveError.message : 'Unable to save this item.')
     } finally {
       setEntrySaving(false)
+    }
+  }
+
+  const handleEntryFollowup = async () => {
+    if (!book || !selectedEntry || selectedEntry.kind !== 'annotation' || !entryFollowup.trim() || entryFollowupSubmitting) return
+    const conversationId = entryMessages[0]?.conversation_id
+    if (!conversationId) {
+      setEntryActionError('无法找到这条批注对应的对话。')
+      return
+    }
+    const content = entryFollowup.trim()
+    setEntryFollowupSubmitting(true)
+    setEntryActionError(null)
+    try {
+      const run = await api.createAIRun(book.id, conversationId, {
+        content,
+        chapter_id: selectedEntry.chapterId,
+        selection: selectedEntry.sourceText,
+        client_message_id: uid(),
+      })
+      let currentRun = run
+      for (let attempt = 0; attempt < 60 && ['queued', 'running'].includes(currentRun.status); attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 2000))
+        currentRun = await api.getAIRun(run.id)
+      }
+      if (['failed', 'partial', 'cancelled'].includes(currentRun.status)) {
+        throw new Error(currentRun.error_message || 'AI 运行失败')
+      }
+      const messages = await api.listAnnotationMessages(book.id, selectedEntry.sourceId)
+      setEntryMessages(messages)
+      setEntryFollowup('')
+    } catch (followupError) {
+      setEntryActionError(followupError instanceof Error ? followupError.message : '追问失败。')
+    } finally {
+      setEntryFollowupSubmitting(false)
     }
   }
 
@@ -434,7 +477,11 @@ export default function ParatextPage({ onNavigate, onOpenReading, bookId }: Para
           editContent={entryEditContent}
           loadingMessages={entryMessagesLoading}
           error={entryActionError}
-          saving={entrySaving}
+          saving={entrySaving || entryFollowupSubmitting}
+          followup={entryFollowup}
+          submittingFollowup={entryFollowupSubmitting}
+          onFollowupChange={setEntryFollowup}
+          onFollowupSubmit={() => void handleEntryFollowup()}
           onClose={closeEntryModal}
           onOpenSource={selectedEntry.kind !== 'note' && selectedEntry.chapterId ? () => openReading(selectedEntry.chapterId, selectedEntry.sourceId) : undefined}
           onEdit={selectedEntry.kind !== 'excerpt' ? () => openEntryModal(selectedEntry, 'edit') : undefined}

@@ -129,6 +129,45 @@
   overflow-wrap: anywhere;
 }
 
+.entry-detail-followup {
+  padding: 12px;
+  border-top: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.entry-detail-followup-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 64px;
+  padding: 8px 9px;
+  border: 1px solid var(--color-border-mid);
+  border-radius: 3px;
+  outline: 0;
+  color: var(--color-fg);
+  background: rgba(255, 255, 255, 0.28);
+  font: 14px/1.55 'Source Sans 3', system-ui, sans-serif;
+  resize: vertical;
+}
+
+.entry-detail-followup-input:focus { border-color: var(--color-fg); }
+
+.entry-detail-followup > button {
+  display: block;
+  min-height: 30px;
+  margin: 9px 0 0 auto;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 3px;
+  color: var(--color-fg);
+  background: rgba(81, 74, 69, 0.1);
+  font: 13px 'Source Sans 3', system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.entry-detail-followup > button:hover { background: rgba(81, 74, 69, 0.16); }
+.entry-detail-followup > button:disabled { cursor: default; opacity: 0.45; }
+
 .entry-detail-status,
 .entry-detail-error,
 .entry-detail-date {

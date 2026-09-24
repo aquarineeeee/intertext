@@ -32,6 +32,10 @@ type EntryDetailModalProps = {
   onSave?: () => void
   onRemoveBook?: () => void
   removingBook?: boolean
+  followup?: string
+  submittingFollowup?: boolean
+  onFollowupChange?: (value: string) => void
+  onFollowupSubmit?: () => void
 }
 
 const labels: Record<EntryDetailKind, string> = {
@@ -62,6 +66,10 @@ export default function EntryDetailModal({
   onSave,
   onRemoveBook,
   removingBook = false,
+  followup = '',
+  submittingFollowup = false,
+  onFollowupChange,
+  onFollowupSubmit,
 }: EntryDetailModalProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -72,6 +80,7 @@ export default function EntryDetailModal({
   }, [onClose, saving])
 
   const hasConversation = loadingMessages || Boolean(entry.messages?.length)
+  const canFollowup = Boolean(followup.trim()) && !submittingFollowup
   const canSave = entry.kind !== 'note' || Boolean(editContent.trim())
 
   return (
@@ -116,7 +125,7 @@ export default function EntryDetailModal({
             rows={8}
             autoFocus={entry.kind === 'annotation'}
           />
-        ) : entry.content ? (
+        ) : entry.content && !hasConversation ? (
           <div className="entry-detail-content">{entry.content}</div>
         ) : null}
 
@@ -124,12 +133,35 @@ export default function EntryDetailModal({
           <div className="entry-detail-conversation" aria-label="与 AI 的完整对话">
             {loadingMessages ? (
               <p className="entry-detail-status">正在加载对话…</p>
-            ) : entry.messages?.map(message => (
-              <article className={`entry-detail-message entry-detail-message-${message.role}`} key={message.id}>
-                <span>{message.role === 'assistant' ? 'AI' : message.role === 'user' ? '你' : '系统'}</span>
-                <p>{message.content}</p>
-              </article>
-            ))}
+            ) : <>
+              {entry.messages?.map(message => (
+                <article className={`entry-detail-message entry-detail-message-${message.role}`} key={message.id}>
+                  <span>{message.role === 'assistant' ? 'AI' : message.role === 'user' ? '你' : '系统'}</span>
+                  <p>{message.content}</p>
+                </article>
+              ))}
+              {entry.kind === 'annotation' && entry.messages?.length && (
+                <div className="entry-detail-followup">
+                  <textarea
+                    className="entry-detail-followup-input"
+                    value={followup}
+                    onChange={event => onFollowupChange?.(event.target.value)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault()
+                        if (canFollowup) onFollowupSubmit?.()
+                      }
+                    }}
+                    placeholder="继续追问…"
+                    rows={3}
+                    disabled={submittingFollowup}
+                  />
+                  <button type="button" disabled={!canFollowup} onClick={onFollowupSubmit}>
+                    {submittingFollowup ? '生成中…' : '追问'}
+                  </button>
+                </div>
+              )}
+            </>}
           </div>
         )}
 
@@ -140,9 +172,9 @@ export default function EntryDetailModal({
         <time className="entry-detail-date">{formatDate(entry.date)}</time>
         {error && <p className="entry-detail-error">{error}</p>}
 
-        {(onEdit || onSave) && (
+        {((onEdit && !hasConversation) || (onSave && mode === 'edit')) && (
           <footer className="entry-detail-actions">
-            {mode === 'view' && onEdit && <button type="button" onClick={onEdit}>编辑</button>}
+            {mode === 'view' && onEdit && !hasConversation && <button type="button" onClick={onEdit}>编辑</button>}
             {mode === 'edit' && onSave && (
               <button type="button" disabled={saving || !canSave} onClick={onSave}>{saving ? '保存中…' : '保存'}</button>
             )}
